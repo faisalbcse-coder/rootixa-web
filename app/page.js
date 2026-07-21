@@ -1,5 +1,6 @@
 "use client";
 
+import Link from 'next/link';
 import React, { useState, useEffect } from 'react';
 import { 
   Search, Moon, Sun, Menu, X, Star, Users, ArrowRight, 
@@ -47,28 +48,20 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobilePopularOpen, setMobilePopularOpen] = useState(false);
   const [desktopDropdownOpen, setDesktopDropdownOpen] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
-  const [mounted, setMounted] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => typeof window !== 'undefined' && localStorage.getItem('rootixa_theme') === 'dark');
 
   useEffect(() => {
-    setMounted(true);
     document.title = "Rootixa - All Your Digital Tasks, Solved in Seconds";
 
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
     window.addEventListener('scroll', handleScroll);
     
-    try {
-      const savedTheme = localStorage.getItem('rootixa_theme');
-      if (savedTheme === 'dark') {
-        setDarkMode(true);
-        document.documentElement.classList.add('dark');
-      }
-    } catch (error) {
-      // Safely ignore local storage access errors
-    }
-
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', darkMode);
+  }, [darkMode]);
 
   const toggleDarkMode = () => {
     const newDarkMode = !darkMode;
@@ -105,6 +98,8 @@ export default function App() {
     { id: 6, name: 'Invoice Generator', desc: 'Generate professional invoices and receipts on the go for your clients.', icon: <Calculator className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />, users: '920K', rating: 4.8, isNew: false, link: '#' },
   ];
 
+  const desktopNavItemClass = "relative px-3 py-2 text-sm font-bold text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300 rounded-full transition-colors duration-200 flex items-center gap-1.5 cursor-pointer after:absolute after:bottom-0.5 after:left-3 after:right-3 after:h-px after:origin-left after:scale-x-0 after:bg-indigo-500 dark:after:bg-indigo-400 after:transition-transform after:duration-200 hover:after:scale-x-100";
+
   return (
     <div suppressHydrationWarning className={`min-h-screen font-sans flex flex-col transition-colors duration-500 ${darkMode ? 'dark bg-[#090E17] text-slate-200' : 'bg-white text-slate-800'}`}>
       
@@ -123,9 +118,9 @@ export default function App() {
           </div>
 
           <div className="hidden lg:flex items-center space-x-1.5">
-            <a href="/" className="px-4 py-2.5 text-sm font-bold text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-slate-800/60 rounded-full transition-all duration-300 flex items-center gap-1.5 cursor-pointer">
+            <Link href="/" className={desktopNavItemClass}>
               <Home className="w-4 h-4" /> Home
-            </a>
+            </Link>
             
             <div 
               className="relative"
@@ -134,7 +129,7 @@ export default function App() {
             >
               <button 
                 onClick={() => setDesktopDropdownOpen(!desktopDropdownOpen)}
-                className="px-4 py-2.5 text-sm font-bold text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-slate-800/60 rounded-full transition-all duration-300 flex items-center gap-1.5 cursor-pointer"
+                className={desktopNavItemClass}
               >
                 <Star className="w-4 h-4 text-amber-500 dark:text-amber-400" /> Popular Tools <ChevronDown className={`w-3.5 h-3.5 opacity-60 transition-transform duration-300 ${desktopDropdownOpen ? 'rotate-180 text-indigo-600 dark:text-indigo-400' : ''}`} />
               </button>
@@ -164,33 +159,29 @@ export default function App() {
               </div>
             </div>
 
-            <a href="#" className="px-4 py-2.5 text-sm font-bold text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-slate-800/60 rounded-full transition-all duration-300 flex items-center gap-1.5 cursor-pointer">
+            <a href="#" className={desktopNavItemClass}>
               <Wrench className="w-4 h-4" /> All Tools
             </a>
 
-            <a href="#" className="px-4 py-2.5 text-sm font-bold text-slate-600 dark:text-slate-300 hover:text-indigo-600 dark:hover:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-slate-800/60 rounded-full transition-all duration-300 flex items-center gap-1.5 cursor-pointer">
+            <a href="#" className={desktopNavItemClass}>
               <Phone className="w-4 h-4" /> Feedback
             </a>
           </div>
 
           <div className="hidden lg:flex items-center space-x-5">
-            {mounted ? (
-              <button 
-                onClick={toggleDarkMode}
-                className="relative w-14 h-8 flex items-center bg-slate-200 dark:bg-slate-700/80 rounded-full p-1 cursor-pointer transition-colors duration-500 border border-slate-300/50 dark:border-slate-600/50 shadow-inner group hover:bg-slate-300 dark:hover:bg-slate-600"
-                aria-label="Toggle Dark Mode"
-              >
-                <div className="flex justify-between w-full px-1.5 absolute inset-0 items-center z-0">
-                   <Moon className="w-3.5 h-3.5 text-slate-400 dark:text-indigo-300 transition-colors" />
-                   <Sun className="w-3.5 h-3.5 text-amber-500 dark:text-slate-500 transition-colors" />
-                </div>
-                <div className={`w-6 h-6 bg-white dark:bg-slate-900 rounded-full shadow-md transform transition-transform duration-500 ease-[cubic-bezier(0.68,-0.55,0.27,1.55)] flex items-center justify-center z-10 ${darkMode ? 'translate-x-6' : 'translate-x-0'}`}>
-                  {darkMode ? <Moon className="w-3 h-3 text-indigo-500" /> : <Sun className="w-3 h-3 text-amber-500" />}
-                </div>
-              </button>
-            ) : (
-              <div className="w-14 h-8 bg-slate-200 dark:bg-slate-700/80 rounded-full border border-slate-300/50 dark:border-slate-600/50 animate-pulse"></div>
-            )}
+            <button
+              onClick={toggleDarkMode}
+              className="relative w-14 h-8 flex items-center bg-slate-200 dark:bg-slate-700/80 rounded-full p-1 cursor-pointer transition-colors duration-500 border border-slate-300/50 dark:border-slate-600/50 shadow-inner group hover:bg-slate-300 dark:hover:bg-slate-600"
+              aria-label="Toggle Dark Mode"
+            >
+              <div className="flex justify-between w-full px-1.5 absolute inset-0 items-center z-0">
+                 <Moon className="w-3.5 h-3.5 text-slate-400 dark:text-indigo-300 transition-colors" />
+                 <Sun className="w-3.5 h-3.5 text-amber-500 dark:text-slate-500 transition-colors" />
+              </div>
+              <div className={`w-6 h-6 bg-white dark:bg-slate-900 rounded-full shadow-md transform transition-transform duration-500 ease-[cubic-bezier(0.68,-0.55,0.27,1.55)] flex items-center justify-center z-10 ${darkMode ? 'translate-x-6' : 'translate-x-0'}`}>
+                {darkMode ? <Moon className="w-3 h-3 text-indigo-500" /> : <Sun className="w-3 h-3 text-amber-500" />}
+              </div>
+            </button>
             
             <button className="bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-300 px-6 py-2.5 rounded-full text-sm font-bold transition-all duration-300 flex items-center gap-2 border border-indigo-100 dark:border-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/10 hover:-translate-y-0.5 cursor-pointer">
               <User className="w-4 h-4" /> Login / Sign Up
@@ -204,7 +195,7 @@ export default function App() {
 
         {mobileMenuOpen && (
           <div className="lg:hidden absolute top-full left-4 right-4 mt-2 bg-white/95 dark:bg-slate-900/95 backdrop-blur-2xl border border-slate-100 dark:border-slate-800 shadow-2xl rounded-3xl p-5 flex flex-col space-y-3 z-50 animate-in fade-in slide-in-from-top-4 duration-300">
-            <a href="/" className="text-slate-800 dark:text-slate-200 font-bold hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-slate-800 px-4 py-3 rounded-xl flex items-center gap-3 transition-colors cursor-pointer"><Home className="w-5 h-5 text-indigo-500" /> Home</a>
+            <Link href="/" className="text-slate-800 dark:text-slate-200 font-bold hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-slate-800 px-4 py-3 rounded-xl flex items-center gap-3 transition-colors cursor-pointer"><Home className="w-5 h-5 text-indigo-500" /> Home</Link>
             
             <div className="rounded-xl overflow-hidden bg-slate-50 dark:bg-slate-800/50">
               <button 

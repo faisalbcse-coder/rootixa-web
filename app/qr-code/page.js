@@ -1,11 +1,14 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from 'react';
+import Link from 'next/link';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   Link as LinkIcon, Type, Wifi, Mail, Download, Palette, CheckCircle, LayoutGrid, 
   ArrowLeft, ImagePlus, Trash2, X, Send, Sliders, ChevronDown, Settings, 
   Zap, FileImage, Grid, Printer
 } from 'lucide-react';
+
+const PREVIEW_SIZE = 320;
 
 // === Advertisement Placeholder Component ===
 const AdSpace = ({ className, text = "Advertisement Space" }) => (
@@ -44,6 +47,7 @@ export default function QRCodeGenerator() {
     fgColor: '#4F46E5', bgColor: '#FFFFFF',
     logo: null, logoSize: 0.4, 
     format: 'png',
+    exportSize: 2048,
     dotStyle: 'square', 
     eyeFrameStyle: 'square', 
     eyeDotStyle: 'square', 
@@ -51,45 +55,26 @@ export default function QRCodeGenerator() {
   });
 
   // Lead Generation & Tracking
-  const [downloadCount, setDownloadCount] = useState(0);
+  const [downloadCount, setDownloadCount] = useState(() => typeof window === 'undefined' ? 0 : Number(localStorage.getItem('qr_dl_count') || 0));
   const [showModal, setShowModal] = useState(false);
   const [userEmail, setUserEmail] = useState('');
-  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(() => typeof window !== 'undefined' && localStorage.getItem('qr_user_subscribed') === 'true');
   const [isDownloaded, setIsDownloaded] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   
   const [openAccordion, setOpenAccordion] = useState('design'); 
   
   const qrRef = useRef(null);
   const qrCodeInstance = useRef(null);
 
-  useEffect(() => {
-    import('qr-code-styling').then(({ default: QRCodeStyling }) => {
-      qrCodeInstance.current = new QRCodeStyling({
-        width: 260, height: 260, margin: 10,
-        imageOptions: { hideBackgroundDots: true, imageSize: qrSettings.logoSize, margin: 5 }
-      });
-      if (qrRef.current) {
-        qrRef.current.innerHTML = ''; 
-        qrCodeInstance.current.append(qrRef.current);
-      }
-      updateQRCode();
-    });
-    
-    const savedCount = localStorage.getItem('qr_dl_count');
-    if (savedCount) setDownloadCount(parseInt(savedCount));
-    
-    const subscribed = localStorage.getItem('qr_user_subscribed');
-    if (subscribed === 'true') setIsSubscribed(true);
-  }, []);
-
-  const getFinalQRValue = () => {
+  const getFinalQRValue = useCallback(() => {
     if (activeTab === 'wifi') return `WIFI:T:${qrData.wifiEncryption};S:${qrData.wifiSsid};P:${qrData.wifiPassword};;`;
     if (activeTab === 'email') return `mailto:${qrData.email}`;
     if (activeTab === 'text') return qrData.text || ' ';
     return qrData.url || 'https://rootixa.com';
-  };
+  }, [activeTab, qrData]);
 
-  const updateQRCode = () => {
+  const updateQRCode = useCallback(() => {
     if (!qrCodeInstance.current) return;
     qrCodeInstance.current.update({
       data: getFinalQRValue(),
@@ -101,9 +86,28 @@ export default function QRCodeGenerator() {
       qrOptions: { errorCorrectionLevel: qrSettings.errorCorrection },
       imageOptions: { hideBackgroundDots: true, imageSize: qrSettings.logoSize, margin: 8 }
     });
-  };
+  }, [getFinalQRValue, qrSettings]);
 
-  useEffect(() => { updateQRCode(); }, [qrData, activeTab, qrSettings]);
+  useEffect(() => {
+    let isActive = true;
+    import('qr-code-styling').then(({ default: QRCodeStyling }) => {
+      if (!isActive) return;
+      qrCodeInstance.current = new QRCodeStyling({
+        width: PREVIEW_SIZE, height: PREVIEW_SIZE, margin: 12,
+        data: 'https://rootixa.com',
+        dotsOptions: { color: '#4F46E5', type: 'square' },
+        backgroundOptions: { color: '#FFFFFF' },
+        cornersSquareOptions: { type: 'square', color: '#4F46E5' },
+        cornersDotOptions: { type: 'square', color: '#4F46E5' },
+        qrOptions: { errorCorrectionLevel: 'H' },
+        imageOptions: { hideBackgroundDots: true, imageSize: 0.4, margin: 8 }
+      });
+      if (qrRef.current) qrCodeInstance.current.append(qrRef.current);
+    });
+    return () => { isActive = false; };
+  }, []);
+
+  useEffect(() => { updateQRCode(); }, [updateQRCode]);
 
   const handleDataChange = (field, value) => setQrData(prev => ({ ...prev, [field]: value }));
   const handleSettingChange = (field, value) => setQrSettings(prev => ({ ...prev, [field]: value }));
@@ -123,9 +127,25 @@ export default function QRCodeGenerator() {
     else executeDownload(true); 
   };
 
-  const executeDownload = (shouldIncrement = false) => {
+  const withExportResolution = async (callback) => {
+    if (!qrCodeInstance.current) return null;
+
+    qrCodeInstance.current.update({ width: qrSettings.exportSize, height: qrSettings.exportSize, margin: 48 });
+    try {
+      return await callback(qrCodeInstance.current);
+    } finally {
+      qrCodeInstance.current.update({ width: PREVIEW_SIZE, height: PREVIEW_SIZE, margin: 12 });
+    }
+  };
+
+  const executeDownload = async (shouldIncrement = false) => {
     if (!qrCodeInstance.current) return;
-    qrCodeInstance.current.download({ name: "Rootixa-Premium-QR", extension: qrSettings.format });
+    setIsExporting(true);
+    try {
+      await withExportResolution((qrCode) => qrCode.download({ name: "Rootixa-QR", extension: qrSettings.format }));
+    } finally {
+      setIsExporting(false);
+    }
     
     if (shouldIncrement && !isSubscribed) {
       const newCount = downloadCount + 1;
@@ -137,23 +157,36 @@ export default function QRCodeGenerator() {
     setTimeout(() => setIsDownloaded(false), 3000);
   };
 
-  const handleEmailSubmit = () => {
+  const handleEmailSubmit = async () => {
     if (!userEmail || !userEmail.includes('@')) {
       alert("Please enter a valid email address.");
       return;
     }
     localStorage.setItem('qr_user_subscribed', 'true');
     setIsSubscribed(true);
-    executeDownload(false);
+    await executeDownload(false);
   };
 
   // === WiFi Print Poster Logic ===
-  const handlePrintWifi = () => {
-    const canvas = qrRef.current.querySelector('canvas');
-    if (!canvas) return;
-    const qrDataUrl = canvas.toDataURL('image/png');
+  const handlePrintWifi = async () => {
+    if (!qrCodeInstance.current || isExporting) return;
+    setIsExporting(true);
+    let qrDataUrl;
+    try {
+      const imageBlob = await withExportResolution((qrCode) => qrCode.getRawData('png'));
+      qrDataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(imageBlob);
+      });
+    } finally {
+      setIsExporting(false);
+    }
     
     const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+    const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[character]));
     printWindow.document.write(`
       <html>
         <head>
@@ -183,10 +216,10 @@ export default function QRCodeGenerator() {
             
             <div class="network-info">
               <div class="label">Network Name</div>
-              <div class="value">${qrData.wifiSsid || 'Guest WiFi'}</div>
+              <div class="value">${escapeHtml(qrData.wifiSsid || 'Guest WiFi')}</div>
               
               <div class="label">Password</div>
-              <div class="value">${qrData.wifiPassword || 'None'}</div>
+              <div class="value">${escapeHtml(qrData.wifiPassword || 'None')}</div>
             </div>
             
             <div class="footer">Powered by Rootixa QR Generator</div>
@@ -211,7 +244,7 @@ export default function QRCodeGenerator() {
             <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4"><Zap className="w-8 h-8" /></div>
             <h3 className="text-xl font-bold text-center text-gray-900 mb-2">Unlock Unlimited</h3>
             <p className="text-gray-500 text-sm text-center mb-6">
-              You've reached your free download limit. Enter your email to unlock unlimited high-res downloads forever.
+              You&apos;ve reached your free download limit. Enter your email to unlock unlimited high-res downloads forever.
             </p>
             <input 
               type="email" placeholder="your@email.com" 
@@ -228,7 +261,7 @@ export default function QRCodeGenerator() {
       {/* Navbar */}
       <nav className="bg-white/80 backdrop-blur-md border-b border-gray-200/50 py-4 sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 flex justify-between items-center">
-          <a href="/" className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-indigo-600"><ArrowLeft className="w-4 h-4" /> Back to Home</a>
+          <Link href="/" className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-indigo-600"><ArrowLeft className="w-4 h-4" /> Back to Home</Link>
           <span className="text-xl font-extrabold text-gray-900">Rootixa<span className="text-indigo-600">.</span></span>
         </div>
       </nav>
@@ -431,12 +464,12 @@ export default function QRCodeGenerator() {
                   className="p-4 rounded-2xl mb-8 border border-gray-200 flex justify-center items-center transition-colors duration-500 shadow-[inset_0_2px_10px_rgba(0,0,0,0.02)]"
                   style={{ backgroundColor: qrSettings.bgColor }}
                 >
-                  <div ref={qrRef} className="rounded-xl overflow-hidden" />
+                  <div ref={qrRef} className="rounded-xl overflow-hidden [&>canvas]:max-w-full [&>canvas]:h-auto" />
                 </div>
 
                 <div className="w-full">
                   {/* GLOBAL EXPORT SETTINGS */}
-                  <div className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-xl mb-4">
+                  <div className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-xl mb-3">
                      <span className="text-sm font-bold text-gray-600 flex items-center gap-1"><FileImage className="w-4 h-4"/> Format:</span>
                      <select value={qrSettings.format} onChange={e => handleSettingChange('format', e.target.value)} className="bg-transparent font-bold text-indigo-600 outline-none cursor-pointer">
                        <option value="png">PNG (High Res)</option>
@@ -446,11 +479,26 @@ export default function QRCodeGenerator() {
                      </select>
                   </div>
 
+                  <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl mb-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-gray-700">Export quality</p>
+                        <p className="text-[11px] text-gray-500">Higher resolution for print and sharp scanning.</p>
+                      </div>
+                      <select value={qrSettings.exportSize} onChange={e => handleSettingChange('exportSize', Number(e.target.value))} className="shrink-0 bg-white border border-indigo-100 rounded-lg px-2 py-1.5 text-sm font-bold text-indigo-700 outline-none cursor-pointer">
+                        <option value={1024}>Standard · 1024px</option>
+                        <option value={2048}>High · 2048px</option>
+                        <option value={4096}>Maximum · 4096px</option>
+                      </select>
+                    </div>
+                  </div>
+
                   {/* Print WiFi Sign Button */}
                   {activeTab === 'wifi' && (
                     <button 
                       onClick={handlePrintWifi}
-                      className="w-full mb-3 py-3 rounded-xl font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition-all flex justify-center items-center gap-2"
+                      disabled={isExporting}
+                      className="w-full mb-3 py-3 rounded-xl font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition-all flex justify-center items-center gap-2 disabled:cursor-wait disabled:opacity-70"
                     >
                       <Printer className="w-4 h-4" /> Print Free WiFi Poster
                     </button>
@@ -458,13 +506,16 @@ export default function QRCodeGenerator() {
 
                   <button 
                     onClick={initiateDownload}
-                    className={`w-full py-4 rounded-xl font-bold shadow-md transition-all flex justify-center items-center gap-2 ${
+                    disabled={isExporting}
+                    className={`w-full py-4 rounded-xl font-bold shadow-md transition-all flex justify-center items-center gap-2 disabled:cursor-wait disabled:opacity-80 ${
                       isDownloaded ? 'bg-emerald-500 text-white shadow-emerald-500/20' : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20'
                     }`}
                   >
                     {isDownloaded ? <CheckCircle className="w-5 h-5" /> : <Download className="w-5 h-5" />}
-                    {isDownloaded ? 'Saved Successfully!' : `Download QR Code`}
+                    {isDownloaded ? 'Saved Successfully!' : isExporting ? 'Preparing high-quality file…' : 'Download QR Code'}
                   </button>
+
+                  <p className="text-[11px] text-gray-400 text-center mt-3">SVG stays perfectly sharp at every size.</p>
                   
                   <p className="text-[11px] text-gray-400 text-center uppercase font-bold tracking-wider mt-4">
                     Download Limit: {isSubscribed ? <span className="text-emerald-500 font-extrabold tracking-widest">Unlimited</span> : `${downloadCount}/2`}
