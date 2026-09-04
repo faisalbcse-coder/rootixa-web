@@ -4,11 +4,22 @@ import Link from 'next/link';
 import Image from 'next/image';
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { 
-  Link as LinkIcon, Type, Wifi, Mail, Download, CheckCircle, 
-  ArrowLeft, ImagePlus, Trash2, X, Send, Sliders, ChevronDown, 
-  Settings, Zap, FileImage, Grid, Printer, AlertTriangle, ShieldCheck,
-  Eye, RefreshCw, Sparkles, Check, Info
+  Link as LinkIcon, Type, Wifi, Mail, Phone, MessageSquare, MessageCircle, 
+  UserCheck, MapPin, Calendar, Share2, Smartphone, Download, CheckCircle, 
+  ArrowLeft, ImagePlus, Trash2, X, Send, Sliders, Settings, Zap, 
+  Grid, Printer, AlertTriangle, ShieldCheck, Sparkles, Check, Info
 } from 'lucide-react';
+import {
+  buildQRPayload,
+  checkPayloadCapacity,
+  isValidCoordinate,
+  isValidPhone,
+  isValidUrl,
+  isValidEmail,
+  sanitizePhoneNumber,
+  sanitizeWhatsAppNumber,
+  normalizeUrl
+} from '@/lib/qr/payload-builder';
 
 const PREVIEW_SIZE = 300;
 const POSTER_PRESETS = {
@@ -16,6 +27,29 @@ const POSTER_PRESETS = {
   B4: { label: 'B4 · 250 × 353 mm', width: 250, height: 353 },
   Letter: { label: 'Letter · 216 × 279 mm', width: 216, height: 279 },
 };
+
+// 12 Supported QR Content Types Definition
+const QR_TYPES = [
+  { id: 'url', name: 'Website URL', category: 'links', icon: LinkIcon, helper: 'Scan to open website in browser.' },
+  { id: 'text', name: 'Plain Text', category: 'info', icon: Type, helper: 'Scan to view raw text or notes.' },
+  { id: 'wifi', name: 'Wi-Fi Network', category: 'info', icon: Wifi, helper: 'Scan to automatically connect to Wi-Fi.' },
+  { id: 'email', name: 'Email Message', category: 'communication', icon: Mail, helper: 'Scan to draft an email message.' },
+  { id: 'phone', name: 'Phone Call', category: 'communication', icon: Phone, helper: 'Scan to call this phone number.' },
+  { id: 'sms', name: 'SMS Message', category: 'communication', icon: MessageSquare, helper: 'Scan to open a new SMS with this message.' },
+  { id: 'whatsapp', name: 'WhatsApp', category: 'communication', icon: MessageCircle, helper: 'Scan to open a WhatsApp conversation.' },
+  { id: 'vcard', name: 'Contact / vCard', category: 'info', icon: UserCheck, helper: 'Scan to save this contact to address book.' },
+  { id: 'location', name: 'Location', category: 'info', icon: MapPin, helper: 'Scan to open this location on a map.' },
+  { id: 'event', name: 'Calendar Event', category: 'info', icon: Calendar, helper: 'Scan to add this event to a compatible calendar.' },
+  { id: 'social', name: 'Social Media', category: 'links', icon: Share2, helper: 'Scan to open this social profile or page.' },
+  { id: 'app', name: 'App Download', category: 'links', icon: Smartphone, helper: 'Scan to download the app directly from the store.' },
+];
+
+const CATEGORIES = [
+  { id: 'all', label: 'All Types (12)' },
+  { id: 'links', label: 'Web & Apps' },
+  { id: 'communication', label: 'Communication' },
+  { id: 'info', label: 'Info & Utilities' },
+];
 
 // Advertisement Placeholder Component
 const AdSpace = ({ className = "", text = "Advertisement Space" }) => (
@@ -26,7 +60,7 @@ const AdSpace = ({ className = "", text = "Advertisement Space" }) => (
 
 // Contrast Calculation Helpers for Scan Reliability
 function getLuminance(hex) {
-  const cleanHex = hex.replace('#', '');
+  const cleanHex = (hex || '').replace('#', '');
   if (cleanHex.length !== 6) return 0.5;
   const r = parseInt(cleanHex.substring(0, 2), 16) / 255;
   const g = parseInt(cleanHex.substring(2, 4), 16) / 255;
@@ -54,28 +88,14 @@ function isValidHex(hex) {
   return /^#([0-9A-F]{3}){1,2}$/i.test(hex);
 }
 
-function isValidUrl(string) {
-  if (!string || string.trim() === '') return true;
-  try {
-    const testStr = string.startsWith('http://') || string.startsWith('https://') ? string : `https://${string}`;
-    const url = new URL(testStr);
-    return Boolean(url.hostname.includes('.'));
-  } catch {
-    return false;
-  }
-}
-
-function isValidEmail(email) {
-  if (!email || email.trim() === '') return true;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-
 export default function QRCodeGenerator() {
   const [activeTab, setActiveTab] = useState('url');
+  const [selectedCategory, setSelectedCategory] = useState('all');
   const [customizeTab, setCustomizeTab] = useState('pattern');
   
-  // Data State
+  // Comprehensive QR Data State for all 12 types
   const [qrData, setQrData] = useState({
+    // Existing types
     url: 'https://rootixa.com', 
     text: '', 
     wifiSsid: '', 
@@ -86,6 +106,35 @@ export default function QRCodeGenerator() {
     email: '',
     emailSubject: '',
     emailBody: '',
+    // New Phase 2 types
+    phone: '',
+    smsPhone: '',
+    smsMessage: '',
+    whatsappPhone: '',
+    whatsappMessage: '',
+    vcardFullName: '',
+    vcardOrg: '',
+    vcardTitle: '',
+    vcardPhone: '',
+    vcardEmail: '',
+    vcardWebsite: '',
+    vcardAddress: '',
+    geoLat: '',
+    geoLng: '',
+    geoName: '',
+    eventTitle: '',
+    eventStartDate: '',
+    eventStartTime: '',
+    eventEndDate: '',
+    eventEndTime: '',
+    eventLocation: '',
+    eventDescription: '',
+    socialPlatform: 'instagram',
+    socialUrl: '',
+    appAndroidUrl: '',
+    appIosUrl: '',
+    appName: '',
+    appTarget: 'auto',
   });
 
   const [qrSettings, setQrSettings] = useState({
@@ -127,35 +176,44 @@ export default function QRCodeGenerator() {
 
   const isLowContrast = contrastRatio < 3.0;
 
-  // Validation States
-  const isUrlInvalid = activeTab === 'url' && !isValidUrl(qrData.url);
-  const isEmailInvalid = activeTab === 'email' && !isValidEmail(qrData.email);
-
-  const getFinalQRValue = useCallback(() => {
-    if (activeTab === 'wifi') {
-      return `WIFI:T:${qrData.wifiEncryption};S:${qrData.wifiSsid};P:${qrData.wifiPassword};;`;
-    }
-    if (activeTab === 'email') {
-      let mailto = `mailto:${qrData.email || ''}`;
-      const params = [];
-      if (qrData.emailSubject) params.push(`subject=${encodeURIComponent(qrData.emailSubject)}`);
-      if (qrData.emailBody) params.push(`body=${encodeURIComponent(qrData.emailBody)}`);
-      if (params.length > 0) mailto += `?${params.join('&')}`;
-      return mailto;
-    }
-    if (activeTab === 'text') return qrData.text || ' ';
-    
-    let url = qrData.url || 'https://rootixa.com';
-    if (url.trim() !== '' && !url.startsWith('http://') && !url.startsWith('https://')) {
-      url = `https://${url}`;
-    }
-    return url;
+  // Real-time Modular QR Payload Builder
+  const currentPayload = useMemo(() => {
+    return buildQRPayload(activeTab, qrData);
   }, [activeTab, qrData]);
+
+  // Payload Capacity & Density Check
+  const capacityInfo = useMemo(() => {
+    return checkPayloadCapacity(currentPayload, qrSettings.errorCorrection);
+  }, [currentPayload, qrSettings.errorCorrection]);
+
+  // Field Validations for active tab
+  const activeHelper = useMemo(() => {
+    const found = QR_TYPES.find(t => t.id === activeTab);
+    return found ? found.helper : 'Scan with any mobile camera.';
+  }, [activeTab]);
+
+  const isUrlInvalid = activeTab === 'url' && qrData.url.trim() !== '' && !isValidUrl(qrData.url);
+  const isEmailInvalid = activeTab === 'email' && qrData.email.trim() !== '' && !isValidEmail(qrData.email);
+  const isPhoneInvalid = activeTab === 'phone' && qrData.phone.trim() !== '' && !isValidPhone(qrData.phone);
+  const isSmsPhoneInvalid = activeTab === 'sms' && qrData.smsPhone.trim() !== '' && !isValidPhone(qrData.smsPhone);
+  const isWhatsappPhoneInvalid = activeTab === 'whatsapp' && qrData.whatsappPhone.trim() !== '' && !isValidPhone(qrData.whatsappPhone);
+  const isGeoInvalid = activeTab === 'location' && (qrData.geoLat.trim() !== '' || qrData.geoLng.trim() !== '') && !isValidCoordinate(qrData.geoLat, qrData.geoLng);
+  const isSocialInvalid = activeTab === 'social' && qrData.socialUrl.trim() !== '' && qrData.socialUrl.includes('://') && !isValidUrl(qrData.socialUrl);
+  const isAppInvalid = activeTab === 'app' && (
+    (qrData.appAndroidUrl.trim() !== '' && !isValidUrl(qrData.appAndroidUrl)) ||
+    (qrData.appIosUrl.trim() !== '' && !isValidUrl(qrData.appIosUrl))
+  );
+
+  // Filtered types based on selected category pill
+  const filteredTypes = useMemo(() => {
+    if (selectedCategory === 'all') return QR_TYPES;
+    return QR_TYPES.filter(t => t.category === selectedCategory);
+  }, [selectedCategory]);
 
   const updateQRCode = useCallback(() => {
     if (!qrCodeInstance.current) return;
     qrCodeInstance.current.update({
-      data: getFinalQRValue(),
+      data: currentPayload,
       dotsOptions: { color: qrSettings.fgColor, type: qrSettings.dotStyle },
       backgroundOptions: { color: qrSettings.bgColor },
       cornersSquareOptions: { type: qrSettings.eyeFrameStyle, color: qrSettings.fgColor },
@@ -164,7 +222,7 @@ export default function QRCodeGenerator() {
       qrOptions: { errorCorrectionLevel: qrSettings.errorCorrection },
       imageOptions: { hideBackgroundDots: true, imageSize: qrSettings.logoSize, margin: 8 }
     });
-  }, [getFinalQRValue, qrSettings]);
+  }, [currentPayload, qrSettings]);
 
   useEffect(() => {
     let isActive = true;
@@ -208,7 +266,7 @@ export default function QRCodeGenerator() {
       const reader = new FileReader();
       reader.onload = (event) => {
         handleSettingChange('logo', event.target.result);
-        handleSettingChange('errorCorrection', 'H'); // Best practice when logo is added
+        handleSettingChange('errorCorrection', 'H'); // Automatic best practice when logo is embedded
       };
       reader.readAsDataURL(file);
     }
@@ -239,12 +297,12 @@ export default function QRCodeGenerator() {
     if (!qrCodeInstance.current) return;
     setIsExporting(true);
     try {
-      await withExportResolution((qrCode) => qrCode.download({ name: "Rootixa-QR", extension: qrSettings.format }));
+      await withExportResolution((qrCode) => qrCode.download({ name: `Rootixa-QR-${activeTab}`, extension: qrSettings.format }));
       try {
         fetch("/api/tools/track", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ toolId: "qr-code", status: "success" }),
+          body: JSON.stringify({ toolId: "qr-code", status: "success", qrType: activeTab }),
         }).catch(() => {});
       } catch {}
     } finally {
@@ -263,7 +321,6 @@ export default function QRCodeGenerator() {
 
   const handleEmailSubmit = async () => {
     if (!userEmail || !userEmail.includes('@')) {
-      alert("Please enter a valid email address.");
       return;
     }
     localStorage.setItem('qr_user_subscribed', 'true');
@@ -539,7 +596,7 @@ export default function QRCodeGenerator() {
         </div>
       )}
       
-      {/* Lead Generation Modal (Preserved & Polished) */}
+      {/* Lead Generation Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in">
           <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl relative border border-slate-100">
@@ -606,20 +663,20 @@ export default function QRCodeGenerator() {
           <div>
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-[11px] font-bold mb-2 shadow-2xs">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Free Vector & High-Res Generator</span>
+              <span>Multi-Format QR Engine &bull; 12 Content Types</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
-              QR Code Generator
+              Professional QR Studio
             </h1>
             <p className="mt-1 text-xs sm:text-sm text-slate-500">
-              Generate custom, scannable QR codes with custom styling, logos, and high-resolution exports.
+              Create custom, 100% scannable QR codes for websites, contacts, WiFi, direct calls, maps, events, and app downloads.
             </p>
           </div>
 
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-xs">
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <span>100% Reliable Scannability</span>
+              <span>ISO/IEC 18004 Standard</span>
             </span>
           </div>
         </div>
@@ -630,86 +687,107 @@ export default function QRCodeGenerator() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
           {/* ========================================================= */}
-          {/* LEFT CONFIGURATION PANEL (8 cols)                         */}
+          {/* LEFT CONFIGURATION PANEL (7 cols)                         */}
           {/* ========================================================= */}
           <div className="lg:col-span-7 space-y-6">
 
             {/* STEP 1: CONTENT INPUT CARD */}
             <div className="bg-white rounded-3xl p-6 sm:p-7 shadow-xs border border-slate-200/80">
-              <div className="flex items-center justify-between mb-5">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
                 <div>
                   <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-600">Step 1</span>
-                  <h2 className="text-lg font-extrabold text-slate-900">QR Content</h2>
+                  <h2 className="text-lg font-extrabold text-slate-900">Select Data Type</h2>
                 </div>
-                <span className="text-xs text-slate-400 font-medium">Select data type</span>
+                <p className="text-xs text-slate-400 font-medium">{activeHelper}</p>
               </div>
 
-              {/* Segmented Tab Interface */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
-                {[
-                  { id: 'url', name: 'Website URL', icon: <LinkIcon className="w-4 h-4" /> },
-                  { id: 'text', name: 'Plain Text', icon: <Type className="w-4 h-4" /> },
-                  { id: 'wifi', name: 'Wi-Fi Network', icon: <Wifi className="w-4 h-4" /> },
-                  { id: 'email', name: 'Email Message', icon: <Mail className="w-4 h-4" /> }
-                ].map(tab => {
+              {/* Category Filter Pills */}
+              <div className="flex items-center gap-1.5 mb-4 p-1 bg-slate-100 rounded-2xl overflow-x-auto no-scrollbar">
+                {CATEGORIES.map(cat => {
+                  const isActive = selectedCategory === cat.id;
+                  return (
+                    <button
+                      key={cat.id}
+                      type="button"
+                      onClick={() => setSelectedCategory(cat.id)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                        isActive 
+                          ? 'bg-white text-indigo-600 shadow-2xs' 
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      {cat.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* 12-Type Responsive Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mb-6">
+                {filteredTypes.map(tab => {
+                  const Icon = tab.icon;
                   const isActive = activeTab === tab.id;
                   return (
                     <button 
                       key={tab.id} 
                       onClick={() => setActiveTab(tab.id)} 
                       type="button"
-                      className={`flex items-center justify-center gap-2 py-3 px-3 rounded-2xl text-xs font-bold transition-all cursor-pointer border ${
+                      className={`flex flex-col items-start p-3 rounded-2xl text-left transition-all cursor-pointer border ${
                         isActive 
                           ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-600/20' 
-                          : 'bg-slate-50 text-slate-600 border-slate-200/80 hover:bg-slate-100 hover:text-slate-900'
+                          : 'bg-slate-50 text-slate-700 border-slate-200/80 hover:bg-slate-100 hover:border-slate-300'
                       }`}
+                      role="tab"
+                      aria-selected={isActive}
                     >
-                      {tab.icon}
-                      <span>{tab.name}</span>
+                      <div className="flex items-center justify-between w-full mb-1.5">
+                        <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-indigo-600'}`} />
+                        {isActive && <Check className="w-3.5 h-3.5 text-white" />}
+                      </div>
+                      <span className="text-xs font-bold leading-tight">{tab.name}</span>
                     </button>
                   );
                 })}
               </div>
 
-              {/* DYNAMIC CONTENT INPUT FIELDS */}
-              <div className="space-y-4">
-                {/* 1. URL */}
+              {/* DYNAMIC CONTENT INPUT FIELDS (12 Types) */}
+              <div className="space-y-4 pt-4 border-t border-slate-100">
+
+                {/* 1. Website URL */}
                 {activeTab === 'url' && (
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 animate-in fade-in duration-150">
                     <label htmlFor="qr-url-input" className="block text-xs font-bold text-slate-700">
-                      Website URL
+                      Website URL <span className="text-rose-500">*</span>
                     </label>
-                    <div className="relative">
-                      <input 
-                        id="qr-url-input"
-                        type="url"
-                        value={qrData.url} 
-                        onChange={e => handleDataChange('url', e.target.value)} 
-                        className={`w-full px-4 py-3.5 bg-slate-50 rounded-2xl border text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none transition ${
-                          isUrlInvalid 
-                            ? 'border-amber-400 focus:border-amber-500 bg-amber-50/20' 
-                            : 'border-slate-200 focus:border-indigo-500 focus:bg-white'
-                        }`}
-                        placeholder="https://example.com" 
-                      />
-                    </div>
+                    <input 
+                      id="qr-url-input"
+                      type="url"
+                      value={qrData.url} 
+                      onChange={e => handleDataChange('url', e.target.value)} 
+                      className={`w-full px-4 py-3.5 bg-slate-50 rounded-2xl border text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none transition ${
+                        isUrlInvalid 
+                          ? 'border-amber-400 focus:border-amber-500 bg-amber-50/20' 
+                          : 'border-slate-200 focus:border-indigo-500 focus:bg-white'
+                      }`}
+                      placeholder="https://example.com" 
+                    />
                     {isUrlInvalid && (
                       <p className="text-[11px] text-amber-600 font-medium flex items-center gap-1 mt-1">
                         <AlertTriangle className="w-3.5 h-3.5" /> Please enter a valid URL (e.g., https://example.com)
                       </p>
                     )}
                     <p className="text-[11px] text-slate-400">
-                      Visitors will automatically open this link when scanning with their camera.
+                      Scanners will automatically open this link in their default browser.
                     </p>
                   </div>
                 )}
 
-                {/* 2. Text */}
+                {/* 2. Plain Text */}
                 {activeTab === 'text' && (
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 animate-in fade-in duration-150">
                     <div className="flex justify-between items-center">
                       <label htmlFor="qr-text-input" className="block text-xs font-bold text-slate-700">
-                        Your text
+                        Raw Text Content <span className="text-rose-500">*</span>
                       </label>
                       <span className="text-[11px] text-slate-400 font-mono">
                         {qrData.text.length} characters
@@ -724,17 +802,17 @@ export default function QRCodeGenerator() {
                       placeholder="Enter plain text, notes, serial numbers, or a message..." 
                     />
                     <p className="text-[11px] text-slate-400">
-                      Scanners will display this raw text immediately upon scanning.
+                      Scanners will immediately display this raw text upon scanning.
                     </p>
                   </div>
                 )}
 
                 {/* 3. Wi-Fi */}
                 {activeTab === 'wifi' && (
-                  <div className="space-y-4">
+                  <div className="space-y-4 animate-in fade-in duration-150">
                     <div className="space-y-1.5">
                       <label htmlFor="wifi-ssid" className="block text-xs font-bold text-slate-700">
-                        Network Name (SSID)
+                        Network Name (SSID) <span className="text-rose-500">*</span>
                       </label>
                       <input 
                         id="wifi-ssid"
@@ -780,7 +858,7 @@ export default function QRCodeGenerator() {
                     <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 space-y-3">
                       <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-800">
                         <Printer className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>Printable Poster Details (Optional)</span>
+                        <span>Printable Signage Details (Optional)</span>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
@@ -812,10 +890,10 @@ export default function QRCodeGenerator() {
 
                 {/* 4. Email */}
                 {activeTab === 'email' && (
-                  <div className="space-y-3.5">
+                  <div className="space-y-3.5 animate-in fade-in duration-150">
                     <div className="space-y-1.5">
                       <label htmlFor="email-recipient" className="block text-xs font-bold text-slate-700">
-                        Email Address
+                        Recipient Email Address <span className="text-rose-500">*</span>
                       </label>
                       <input 
                         id="email-recipient"
@@ -865,7 +943,528 @@ export default function QRCodeGenerator() {
                     </div>
                   </div>
                 )}
+
+                {/* 5. Phone Call */}
+                {activeTab === 'phone' && (
+                  <div className="space-y-1.5 animate-in fade-in duration-150">
+                    <label htmlFor="phone-input" className="block text-xs font-bold text-slate-700">
+                      Phone Number <span className="text-rose-500">*</span>
+                    </label>
+                    <input 
+                      id="phone-input"
+                      type="tel"
+                      value={qrData.phone} 
+                      onChange={e => handleDataChange('phone', e.target.value)} 
+                      className={`w-full px-4 py-3.5 bg-slate-50 rounded-2xl border text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none transition ${
+                        isPhoneInvalid 
+                          ? 'border-amber-400 focus:border-amber-500 bg-amber-50/20' 
+                          : 'border-slate-200 focus:border-indigo-500 focus:bg-white'
+                      }`}
+                      placeholder="+880 1712-345678" 
+                    />
+                    {isPhoneInvalid && (
+                      <p className="text-[11px] text-amber-600 font-medium flex items-center gap-1 mt-1">
+                        <AlertTriangle className="w-3.5 h-3.5" /> Please enter a valid telephone number with country code.
+                      </p>
+                    )}
+                    <p className="text-[11px] text-slate-400">
+                      Scan to call this phone number immediately on any smartphone.
+                    </p>
+                  </div>
+                )}
+
+                {/* 6. SMS */}
+                {activeTab === 'sms' && (
+                  <div className="space-y-3.5 animate-in fade-in duration-150">
+                    <div className="space-y-1.5">
+                      <label htmlFor="sms-phone" className="block text-xs font-bold text-slate-700">
+                        Phone Number <span className="text-rose-500">*</span>
+                      </label>
+                      <input 
+                        id="sms-phone"
+                        type="tel"
+                        value={qrData.smsPhone} 
+                        onChange={e => handleDataChange('smsPhone', e.target.value)} 
+                        className={`w-full px-4 py-3.5 bg-slate-50 rounded-2xl border text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none transition ${
+                          isSmsPhoneInvalid 
+                            ? 'border-amber-400 focus:border-amber-500 bg-amber-50/20' 
+                            : 'border-slate-200 focus:border-indigo-500 focus:bg-white'
+                        }`}
+                        placeholder="+880 1712-345678" 
+                      />
+                      {isSmsPhoneInvalid && (
+                        <p className="text-[11px] text-amber-600 font-medium flex items-center gap-1 mt-1">
+                          <AlertTriangle className="w-3.5 h-3.5" /> Please enter a valid phone number.
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <label htmlFor="sms-message" className="block text-xs font-bold text-slate-700">
+                          Pre-filled Message (Optional)
+                        </label>
+                        <span className="text-[11px] text-slate-400 font-mono">
+                          {qrData.smsMessage.length} chars
+                        </span>
+                      </div>
+                      <textarea 
+                        id="sms-message"
+                        value={qrData.smsMessage} 
+                        onChange={e => handleDataChange('smsMessage', e.target.value)} 
+                        rows={3} 
+                        className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:bg-white resize-none transition" 
+                        placeholder="Hello, I would like to inquire about..." 
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Scan to open a new SMS with this message prefilled.
+                    </p>
+                  </div>
+                )}
+
+                {/* 7. WhatsApp */}
+                {activeTab === 'whatsapp' && (
+                  <div className="space-y-3.5 animate-in fade-in duration-150">
+                    <div className="space-y-1.5">
+                      <label htmlFor="wa-phone" className="block text-xs font-bold text-slate-700">
+                        WhatsApp Number (with Country Code) <span className="text-rose-500">*</span>
+                      </label>
+                      <input 
+                        id="wa-phone"
+                        type="tel"
+                        value={qrData.whatsappPhone} 
+                        onChange={e => handleDataChange('whatsappPhone', e.target.value)} 
+                        className={`w-full px-4 py-3.5 bg-slate-50 rounded-2xl border text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none transition ${
+                          isWhatsappPhoneInvalid 
+                            ? 'border-amber-400 focus:border-amber-500 bg-amber-50/20' 
+                            : 'border-slate-200 focus:border-indigo-500 focus:bg-white'
+                        }`}
+                        placeholder="8801712345678 (no symbols or spaces)" 
+                      />
+                      {isWhatsappPhoneInvalid && (
+                        <p className="text-[11px] text-amber-600 font-medium flex items-center gap-1 mt-1">
+                          <AlertTriangle className="w-3.5 h-3.5" /> Please enter digits with country code (e.g. 8801712345678).
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label htmlFor="wa-msg" className="block text-xs font-bold text-slate-700">
+                        Prefilled Message (Optional)
+                      </label>
+                      <textarea 
+                        id="wa-msg"
+                        value={qrData.whatsappMessage} 
+                        onChange={e => handleDataChange('whatsappMessage', e.target.value)} 
+                        rows={3} 
+                        className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:bg-white resize-none transition" 
+                        placeholder="Hello from Rootixa! Let's connect." 
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Scan to open a WhatsApp conversation with this message prefilled.
+                    </p>
+                  </div>
+                )}
+
+                {/* 8. Contact / vCard */}
+                {activeTab === 'vcard' && (
+                  <div className="space-y-3.5 animate-in fade-in duration-150">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="sm:col-span-2 space-y-1.5">
+                        <label htmlFor="vcard-name" className="block text-xs font-bold text-slate-700">
+                          Full Name <span className="text-rose-500">*</span>
+                        </label>
+                        <input 
+                          id="vcard-name"
+                          value={qrData.vcardFullName} 
+                          onChange={e => handleDataChange('vcardFullName', e.target.value)} 
+                          className="w-full px-4 py-3 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500 focus:bg-white" 
+                          placeholder="Jane Doe" 
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label htmlFor="vcard-org" className="block text-xs font-bold text-slate-700">
+                          Organization / Company
+                        </label>
+                        <input 
+                          id="vcard-org"
+                          value={qrData.vcardOrg} 
+                          onChange={e => handleDataChange('vcardOrg', e.target.value)} 
+                          className="w-full px-4 py-3 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500 focus:bg-white" 
+                          placeholder="Rootixa Technologies" 
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label htmlFor="vcard-title" className="block text-xs font-bold text-slate-700">
+                          Job Title
+                        </label>
+                        <input 
+                          id="vcard-title"
+                          value={qrData.vcardTitle} 
+                          onChange={e => handleDataChange('vcardTitle', e.target.value)} 
+                          className="w-full px-4 py-3 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500 focus:bg-white" 
+                          placeholder="Lead Engineer" 
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label htmlFor="vcard-phone" className="block text-xs font-bold text-slate-700">
+                          Phone Number
+                        </label>
+                        <input 
+                          id="vcard-phone"
+                          type="tel"
+                          value={qrData.vcardPhone} 
+                          onChange={e => handleDataChange('vcardPhone', e.target.value)} 
+                          className="w-full px-4 py-3 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500 focus:bg-white" 
+                          placeholder="+880 1712-345678" 
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label htmlFor="vcard-email" className="block text-xs font-bold text-slate-700">
+                          Email Address
+                        </label>
+                        <input 
+                          id="vcard-email"
+                          type="email"
+                          value={qrData.vcardEmail} 
+                          onChange={e => handleDataChange('vcardEmail', e.target.value)} 
+                          className="w-full px-4 py-3 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500 focus:bg-white" 
+                          placeholder="jane@example.com" 
+                        />
+                      </div>
+                      <div className="sm:col-span-2 space-y-1.5">
+                        <label htmlFor="vcard-web" className="block text-xs font-bold text-slate-700">
+                          Website
+                        </label>
+                        <input 
+                          id="vcard-web"
+                          value={qrData.vcardWebsite} 
+                          onChange={e => handleDataChange('vcardWebsite', e.target.value)} 
+                          className="w-full px-4 py-3 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500 focus:bg-white" 
+                          placeholder="https://example.com" 
+                        />
+                      </div>
+                      <div className="sm:col-span-2 space-y-1.5">
+                        <label htmlFor="vcard-addr" className="block text-xs font-bold text-slate-700">
+                          Physical Address
+                        </label>
+                        <input 
+                          id="vcard-addr"
+                          value={qrData.vcardAddress} 
+                          onChange={e => handleDataChange('vcardAddress', e.target.value)} 
+                          className="w-full px-4 py-3 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500 focus:bg-white" 
+                          placeholder="Dhaka, Bangladesh" 
+                        />
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Scan to save this contact directly into your phone address book (vCard 3.0).
+                    </p>
+                  </div>
+                )}
+
+                {/* 9. Location */}
+                {activeTab === 'location' && (
+                  <div className="space-y-3.5 animate-in fade-in duration-150">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label htmlFor="geo-lat" className="block text-xs font-bold text-slate-700">
+                          Latitude (-90 to 90) <span className="text-rose-500">*</span>
+                        </label>
+                        <input 
+                          id="geo-lat"
+                          type="number"
+                          step="any"
+                          value={qrData.geoLat} 
+                          onChange={e => handleDataChange('geoLat', e.target.value)} 
+                          className="w-full px-4 py-3 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500 focus:bg-white" 
+                          placeholder="23.8103" 
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label htmlFor="geo-lng" className="block text-xs font-bold text-slate-700">
+                          Longitude (-180 to 180) <span className="text-rose-500">*</span>
+                        </label>
+                        <input 
+                          id="geo-lng"
+                          type="number"
+                          step="any"
+                          value={qrData.geoLng} 
+                          onChange={e => handleDataChange('geoLng', e.target.value)} 
+                          className="w-full px-4 py-3 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500 focus:bg-white" 
+                          placeholder="90.4125" 
+                        />
+                      </div>
+                      <div className="sm:col-span-2 space-y-1.5">
+                        <label htmlFor="geo-name" className="block text-xs font-bold text-slate-700">
+                          Location Name (Optional)
+                        </label>
+                        <input 
+                          id="geo-name"
+                          value={qrData.geoName} 
+                          onChange={e => handleDataChange('geoName', e.target.value)} 
+                          className="w-full px-4 py-3 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500 focus:bg-white" 
+                          placeholder="Rootixa HQ, Gulshan, Dhaka" 
+                        />
+                      </div>
+                    </div>
+                    {isGeoInvalid && (
+                      <p className="text-[11px] text-amber-600 font-medium flex items-center gap-1 mt-1">
+                        <AlertTriangle className="w-3.5 h-3.5" /> Latitude must be between -90 and 90, Longitude between -180 and 180.
+                      </p>
+                    )}
+                    <p className="text-[11px] text-slate-400">
+                      Scan to open this location in Apple Maps, Google Maps, or supported navigation apps.
+                    </p>
+                  </div>
+                )}
+
+                {/* 10. Calendar Event */}
+                {activeTab === 'event' && (
+                  <div className="space-y-3.5 animate-in fade-in duration-150">
+                    <div className="space-y-1.5">
+                      <label htmlFor="event-title" className="block text-xs font-bold text-slate-700">
+                        Event Title <span className="text-rose-500">*</span>
+                      </label>
+                      <input 
+                        id="event-title"
+                        value={qrData.eventTitle} 
+                        onChange={e => handleDataChange('eventTitle', e.target.value)} 
+                        className="w-full px-4 py-3 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500 focus:bg-white" 
+                        placeholder="Quarterly Product Launch" 
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label htmlFor="event-start-date" className="block text-xs font-bold text-slate-700">
+                          Start Date
+                        </label>
+                        <input 
+                          id="event-start-date"
+                          type="date"
+                          value={qrData.eventStartDate} 
+                          onChange={e => handleDataChange('eventStartDate', e.target.value)} 
+                          className="w-full px-4 py-2.5 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500 focus:bg-white cursor-pointer" 
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label htmlFor="event-start-time" className="block text-xs font-bold text-slate-700">
+                          Start Time
+                        </label>
+                        <input 
+                          id="event-start-time"
+                          type="time"
+                          value={qrData.eventStartTime} 
+                          onChange={e => handleDataChange('eventStartTime', e.target.value)} 
+                          className="w-full px-4 py-2.5 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500 focus:bg-white cursor-pointer" 
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label htmlFor="event-end-date" className="block text-xs font-bold text-slate-700">
+                          End Date
+                        </label>
+                        <input 
+                          id="event-end-date"
+                          type="date"
+                          value={qrData.eventEndDate} 
+                          onChange={e => handleDataChange('eventEndDate', e.target.value)} 
+                          className="w-full px-4 py-2.5 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500 focus:bg-white cursor-pointer" 
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label htmlFor="event-end-time" className="block text-xs font-bold text-slate-700">
+                          End Time
+                        </label>
+                        <input 
+                          id="event-end-time"
+                          type="time"
+                          value={qrData.eventEndTime} 
+                          onChange={e => handleDataChange('eventEndTime', e.target.value)} 
+                          className="w-full px-4 py-2.5 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500 focus:bg-white cursor-pointer" 
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label htmlFor="event-loc" className="block text-xs font-bold text-slate-700">
+                        Location / Venue (Optional)
+                      </label>
+                      <input 
+                        id="event-loc"
+                        value={qrData.eventLocation} 
+                        onChange={e => handleDataChange('eventLocation', e.target.value)} 
+                        className="w-full px-4 py-3 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500 focus:bg-white" 
+                        placeholder="Grand Ballroom, Dhaka or Zoom link" 
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label htmlFor="event-desc" className="block text-xs font-bold text-slate-700">
+                        Description (Optional)
+                      </label>
+                      <textarea 
+                        id="event-desc"
+                        value={qrData.eventDescription} 
+                        onChange={e => handleDataChange('eventDescription', e.target.value)} 
+                        rows={2} 
+                        className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 outline-none focus:border-indigo-500 focus:bg-white resize-none" 
+                        placeholder="Event agenda and details..." 
+                      />
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Scan to add this event to a compatible calendar (Apple Calendar, Google Calendar, Outlook).
+                    </p>
+                  </div>
+                )}
+
+                {/* 11. Social Media */}
+                {activeTab === 'social' && (
+                  <div className="space-y-3.5 animate-in fade-in duration-150">
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-bold text-slate-700">
+                        Select Platform
+                      </label>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          { id: 'instagram', label: 'Instagram' },
+                          { id: 'facebook', label: 'Facebook' },
+                          { id: 'youtube', label: 'YouTube' },
+                          { id: 'tiktok', label: 'TikTok' },
+                          { id: 'linkedin', label: 'LinkedIn' },
+                          { id: 'x', label: 'X (Twitter)' },
+                          { id: 'other', label: 'Other' },
+                        ].map(p => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => handleDataChange('socialPlatform', p.id)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border ${
+                              qrData.socialPlatform === p.id 
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs' 
+                                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label htmlFor="social-url" className="block text-xs font-bold text-slate-700">
+                        Profile URL or Username <span className="text-rose-500">*</span>
+                      </label>
+                      <input 
+                        id="social-url"
+                        value={qrData.socialUrl} 
+                        onChange={e => handleDataChange('socialUrl', e.target.value)} 
+                        className={`w-full px-4 py-3.5 bg-slate-50 rounded-2xl border text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none transition ${
+                          isSocialInvalid 
+                            ? 'border-amber-400 focus:border-amber-500 bg-amber-50/20' 
+                            : 'border-slate-200 focus:border-indigo-500 focus:bg-white'
+                        }`}
+                        placeholder="e.g. rootixa or https://instagram.com/rootixa" 
+                      />
+                      {isSocialInvalid && (
+                        <p className="text-[11px] text-amber-600 font-medium flex items-center gap-1 mt-1">
+                          <AlertTriangle className="w-3.5 h-3.5" /> Please enter a valid profile URL or handle.
+                        </p>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Scan to open this social profile or page.
+                    </p>
+                  </div>
+                )}
+
+                {/* 12. App Download */}
+                {activeTab === 'app' && (
+                  <div className="space-y-3.5 animate-in fade-in duration-150">
+                    <div className="space-y-1.5">
+                      <label htmlFor="app-android" className="block text-xs font-bold text-slate-700">
+                        Google Play Store URL (Android)
+                      </label>
+                      <input 
+                        id="app-android"
+                        type="url"
+                        value={qrData.appAndroidUrl} 
+                        onChange={e => handleDataChange('appAndroidUrl', e.target.value)} 
+                        className="w-full px-4 py-3 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:bg-white" 
+                        placeholder="https://play.google.com/store/apps/details?id=..." 
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label htmlFor="app-ios" className="block text-xs font-bold text-slate-700">
+                        Apple App Store URL (iOS)
+                      </label>
+                      <input 
+                        id="app-ios"
+                        type="url"
+                        value={qrData.appIosUrl} 
+                        onChange={e => handleDataChange('appIosUrl', e.target.value)} 
+                        className="w-full px-4 py-3 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:bg-white" 
+                        placeholder="https://apps.apple.com/app/..." 
+                      />
+                    </div>
+
+                    {qrData.appAndroidUrl && qrData.appIosUrl && (
+                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
+                        <label className="block text-[11px] font-bold text-slate-600">
+                          Primary Target Store
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleDataChange('appTarget', 'android')}
+                            className={`py-2 px-3 rounded-xl text-xs font-bold transition cursor-pointer border ${
+                              qrData.appTarget === 'android' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700 border-slate-200'
+                            }`}
+                          >
+                            Android Play Store
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDataChange('appTarget', 'ios')}
+                            className={`py-2 px-3 rounded-xl text-xs font-bold transition cursor-pointer border ${
+                              qrData.appTarget === 'ios' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-700 border-slate-200'
+                            }`}
+                          >
+                            Apple App Store
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {isAppInvalid && (
+                      <p className="text-[11px] text-amber-600 font-medium flex items-center gap-1 mt-1">
+                        <AlertTriangle className="w-3.5 h-3.5" /> At least one valid app store URL is required.
+                      </p>
+                    )}
+                    <p className="text-[11px] text-slate-400">
+                      Scan to download the app directly from the official store.
+                    </p>
+                  </div>
+                )}
+
               </div>
+
+              {/* Real-time Content Capacity Warning Guard */}
+              {capacityInfo.isLarge && (
+                <div className="mt-5 rounded-2xl bg-amber-50/90 border border-amber-200 p-3.5 flex items-start gap-2.5 text-xs text-amber-800 animate-in fade-in">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-bold">Large Content Warning</p>
+                    <p className="text-[11px] text-amber-700 mt-0.5 leading-relaxed">
+                      Your content is large ({capacityInfo.length} characters) for this QR configuration. Try shortening the content or reducing error correction to ensure quick scanning on low-end cameras.
+                    </p>
+                  </div>
+                </div>
+              )}
+
             </div>
 
             {/* STEP 2: CUSTOMIZE & DESIGN CARD */}
@@ -1054,7 +1653,7 @@ export default function QRCodeGenerator() {
                         onClick={() => {
                           handleSettingChange('fgColor', '#4F46E5');
                           handleSettingChange('bgColor', '#FFFFFF');
-                        }}
+                        }} 
                         className="text-[11px] font-bold text-indigo-600 hover:underline cursor-pointer"
                       >
                         Reset to Default
@@ -1295,10 +1894,10 @@ export default function QRCodeGenerator() {
               {/* Sidebar Support / Help Note */}
               <div className="rounded-2xl border border-slate-200/80 bg-white p-4 text-xs text-slate-500 space-y-1 shadow-2xs">
                 <p className="font-bold text-slate-800 flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" /> Scan Guarantee
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" /> Universal Scannability
                 </p>
                 <p className="text-[11px] leading-relaxed text-slate-500">
-                  All generated QR codes adhere strictly to ISO/IEC 18004 standards and are scannable by all modern iOS, Android, and industrial barcode scanners.
+                  Every payload follows official specifications (RFC 2426 vCard, RFC 5545 iCalendar, URI schemas) to ensure immediate recognition across iOS, Android, and hardware barcode scanners.
                 </p>
               </div>
 
