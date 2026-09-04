@@ -7,7 +7,8 @@ import {
   Link as LinkIcon, Type, Wifi, Mail, Phone, MessageSquare, MessageCircle, 
   UserCheck, MapPin, Calendar, Share2, Smartphone, Download, CheckCircle, 
   ArrowLeft, ImagePlus, Trash2, X, Send, Sliders, Settings, Zap, 
-  Grid, Printer, AlertTriangle, ShieldCheck, Sparkles, Check, Info
+  Grid, Printer, AlertTriangle, ShieldCheck, Sparkles, Check, Info,
+  RotateCcw, Palette, Layers, Eye, Compass, SunDim
 } from 'lucide-react';
 import {
   buildQRPayload,
@@ -20,6 +21,11 @@ import {
   sanitizeWhatsAppNumber,
   normalizeUrl
 } from '@/lib/qr/payload-builder';
+import {
+  evaluateScanSafety,
+  getGradientRotation,
+  DESIGN_PRESETS
+} from '@/lib/qr/design-safety';
 
 const PREVIEW_SIZE = 300;
 const POSTER_PRESETS = {
@@ -58,32 +64,6 @@ const AdSpace = ({ className = "", text = "Advertisement Space" }) => (
   </div>
 );
 
-// Contrast Calculation Helpers for Scan Reliability
-function getLuminance(hex) {
-  const cleanHex = (hex || '').replace('#', '');
-  if (cleanHex.length !== 6) return 0.5;
-  const r = parseInt(cleanHex.substring(0, 2), 16) / 255;
-  const g = parseInt(cleanHex.substring(2, 4), 16) / 255;
-  const b = parseInt(cleanHex.substring(4, 6), 16) / 255;
-  const a = [r, g, b].map((v) => {
-    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
-  });
-  return a[0] * 0.2126 + a[1] * 0.7152 + a[2] * 0.0722;
-}
-
-function getContrastRatio(fgHex, bgHex) {
-  try {
-    if (!fgHex || !bgHex || fgHex.length < 6 || bgHex.length < 6) return 21;
-    const lum1 = getLuminance(fgHex);
-    const lum2 = getLuminance(bgHex);
-    const brightest = Math.max(lum1, lum2);
-    const darkest = Math.min(lum1, lum2);
-    return (brightest + 0.05) / (darkest + 0.05);
-  } catch {
-    return 21;
-  }
-}
-
 function isValidHex(hex) {
   return /^#([0-9A-F]{3}){1,2}$/i.test(hex);
 }
@@ -91,11 +71,10 @@ function isValidHex(hex) {
 export default function QRCodeGenerator() {
   const [activeTab, setActiveTab] = useState('text');
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [customizeTab, setCustomizeTab] = useState('pattern');
+  const [customizeTab, setCustomizeTab] = useState('styles');
   
   // Comprehensive QR Data State for all 12 types
   const [qrData, setQrData] = useState({
-    // Existing types
     text: 'Hello from Rootixa!',
     url: 'https://rootixa.com', 
     wifiSsid: '', 
@@ -106,7 +85,6 @@ export default function QRCodeGenerator() {
     email: '',
     emailSubject: '',
     emailBody: '',
-    // New Phase 2 types
     phone: '',
     smsPhone: '',
     smsMessage: '',
@@ -137,17 +115,35 @@ export default function QRCodeGenerator() {
     appTarget: 'auto',
   });
 
+  // Phase 3 Advanced QR Design Settings
   const [qrSettings, setQrSettings] = useState({
+    // Colors & Gradient
     fgColor: '#000000', 
     bgColor: '#FFFFFF',
-    logo: null, 
-    logoSize: 0.35, 
-    format: 'png',
-    exportSize: 2048,
+    isTransparentBg: false,
+    isGradient: false,
+    gradientStart: '#000000',
+    gradientEnd: '#4F46E5',
+    gradientDirection: 'diagonal', // 'horizontal', 'vertical', 'diagonal', 'radial'
+    
+    // Pattern & Eyes
     dotStyle: 'square', 
     eyeFrameStyle: 'square', 
     eyeDotStyle: 'square', 
+    customEyeColor: false,
+    eyeFrameColor: '#000000',
+    eyeDotColor: '#000000',
+
+    // Branding & Logo
+    logo: null, 
+    logoSize: 0.30, 
+    logoBg: 'none', // 'none', 'white'
+
+    // Spacing & Output
+    margin: 12,
     errorCorrection: 'H',
+    format: 'png',
+    exportSize: 2048,
   });
 
   const [logoFileName, setLogoFileName] = useState('');
@@ -169,13 +165,6 @@ export default function QRCodeGenerator() {
   const qrRef = useRef(null);
   const qrCodeInstance = useRef(null);
 
-  // Color Contrast Analysis
-  const contrastRatio = useMemo(() => {
-    return getContrastRatio(qrSettings.fgColor, qrSettings.bgColor);
-  }, [qrSettings.fgColor, qrSettings.bgColor]);
-
-  const isLowContrast = contrastRatio < 3.0;
-
   // Real-time Modular QR Payload Builder
   const currentPayload = useMemo(() => {
     return buildQRPayload(activeTab, qrData);
@@ -185,6 +174,11 @@ export default function QRCodeGenerator() {
   const capacityInfo = useMemo(() => {
     return checkPayloadCapacity(currentPayload, qrSettings.errorCorrection);
   }, [currentPayload, qrSettings.errorCorrection]);
+
+  // Real Measurable Scan Safety Evaluation
+  const scanSafety = useMemo(() => {
+    return evaluateScanSafety(qrSettings);
+  }, [qrSettings]);
 
   // Field Validations for active tab
   const activeHelper = useMemo(() => {
@@ -212,15 +206,55 @@ export default function QRCodeGenerator() {
 
   const updateQRCode = useCallback(() => {
     if (!qrCodeInstance.current) return;
+
+    // Build dotsOptions with solid or gradient fill
+    const dotsOptions = {
+      type: qrSettings.dotStyle,
+      ...(qrSettings.isGradient
+        ? {
+            gradient: {
+              type: qrSettings.gradientDirection === 'radial' ? 'radial' : 'linear',
+              rotation: getGradientRotation(qrSettings.gradientDirection),
+              colorStops: [
+                { offset: 0, color: qrSettings.gradientStart || '#000000' },
+                { offset: 1, color: qrSettings.gradientEnd || '#4F46E5' }
+              ]
+            }
+          }
+        : { color: qrSettings.fgColor })
+    };
+
+    // Build cornersSquareOptions
+    const cornersSquareOptions = {
+      type: qrSettings.eyeFrameStyle,
+      color: qrSettings.customEyeColor ? (qrSettings.eyeFrameColor || qrSettings.fgColor) : qrSettings.fgColor
+    };
+
+    // Build cornersDotOptions
+    const cornersDotOptions = {
+      type: qrSettings.eyeDotStyle,
+      color: qrSettings.customEyeColor ? (qrSettings.eyeDotColor || qrSettings.fgColor) : qrSettings.fgColor
+    };
+
+    // Build backgroundOptions
+    const backgroundOptions = {
+      color: qrSettings.isTransparentBg ? 'transparent' : qrSettings.bgColor
+    };
+
     qrCodeInstance.current.update({
       data: currentPayload,
-      dotsOptions: { color: qrSettings.fgColor, type: qrSettings.dotStyle },
-      backgroundOptions: { color: qrSettings.bgColor },
-      cornersSquareOptions: { type: qrSettings.eyeFrameStyle, color: qrSettings.fgColor },
-      cornersDotOptions: { type: qrSettings.eyeDotStyle, color: qrSettings.fgColor },
+      margin: qrSettings.margin,
+      dotsOptions,
+      backgroundOptions,
+      cornersSquareOptions,
+      cornersDotOptions,
       image: qrSettings.logo,
       qrOptions: { errorCorrectionLevel: qrSettings.errorCorrection },
-      imageOptions: { hideBackgroundDots: true, imageSize: qrSettings.logoSize, margin: 8 }
+      imageOptions: { 
+        hideBackgroundDots: true, 
+        imageSize: qrSettings.logoSize, 
+        margin: qrSettings.logoBg === 'white' ? 12 : 8 
+      }
     });
   }, [currentPayload, qrSettings]);
 
@@ -238,7 +272,7 @@ export default function QRCodeGenerator() {
         cornersSquareOptions: { type: 'square', color: '#000000' },
         cornersDotOptions: { type: 'square', color: '#000000' },
         qrOptions: { errorCorrectionLevel: 'H' },
-        imageOptions: { hideBackgroundDots: true, imageSize: 0.35, margin: 8 }
+        imageOptions: { hideBackgroundDots: true, imageSize: 0.30, margin: 8 }
       });
       if (qrRef.current) qrCodeInstance.current.append(qrRef.current);
     });
@@ -259,6 +293,40 @@ export default function QRCodeGenerator() {
   const handleDataChange = (field, value) => setQrData(prev => ({ ...prev, [field]: value }));
   const handleSettingChange = (field, value) => setQrSettings(prev => ({ ...prev, [field]: value }));
 
+  const handleApplyPreset = (presetKey) => {
+    const preset = DESIGN_PRESETS[presetKey];
+    if (!preset) return;
+    setQrSettings(prev => ({
+      ...prev,
+      ...preset.settings
+    }));
+  };
+
+  const handleResetDesign = () => {
+    setQrSettings(prev => ({
+      ...prev,
+      fgColor: '#000000',
+      bgColor: '#FFFFFF',
+      isTransparentBg: false,
+      isGradient: false,
+      gradientStart: '#000000',
+      gradientEnd: '#4F46E5',
+      gradientDirection: 'diagonal',
+      dotStyle: 'square',
+      eyeFrameStyle: 'square',
+      eyeDotStyle: 'square',
+      customEyeColor: false,
+      eyeFrameColor: '#000000',
+      eyeDotColor: '#000000',
+      logo: null,
+      logoSize: 0.30,
+      logoBg: 'none',
+      margin: 12,
+      errorCorrection: 'H',
+    }));
+    setLogoFileName('');
+  };
+
   const handleLogoUpload = (e) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -266,7 +334,9 @@ export default function QRCodeGenerator() {
       const reader = new FileReader();
       reader.onload = (event) => {
         handleSettingChange('logo', event.target.result);
-        handleSettingChange('errorCorrection', 'H'); // Automatic best practice when logo is embedded
+        if (qrSettings.errorCorrection === 'L' || qrSettings.errorCorrection === 'M') {
+          handleSettingChange('errorCorrection', 'H'); // Automatic best practice
+        }
       };
       reader.readAsDataURL(file);
     }
@@ -285,11 +355,27 @@ export default function QRCodeGenerator() {
 
   const withExportResolution = async (callback) => {
     if (!qrCodeInstance.current) return null;
-    qrCodeInstance.current.update({ width: qrSettings.exportSize, height: qrSettings.exportSize, margin: 48 });
+    const ratio = qrSettings.exportSize / PREVIEW_SIZE;
+    const exportMargin = Math.round(qrSettings.margin * ratio);
+    
+    // Safety guard for JPG format when transparent background is selected
+    const isJpgWithTransparency = qrSettings.format === 'jpeg' && qrSettings.isTransparentBg;
+
+    qrCodeInstance.current.update({ 
+      width: qrSettings.exportSize, 
+      height: qrSettings.exportSize, 
+      margin: exportMargin,
+      ...(isJpgWithTransparency ? { backgroundOptions: { color: '#FFFFFF' } } : {})
+    });
     try {
       return await callback(qrCodeInstance.current);
     } finally {
-      qrCodeInstance.current.update({ width: PREVIEW_SIZE, height: PREVIEW_SIZE, margin: 12 });
+      qrCodeInstance.current.update({ 
+        width: PREVIEW_SIZE, 
+        height: PREVIEW_SIZE, 
+        margin: qrSettings.margin,
+        ...(isJpgWithTransparency ? { backgroundOptions: { color: 'transparent' } } : {})
+      });
     }
   };
 
@@ -472,16 +558,21 @@ export default function QRCodeGenerator() {
   ];
 
   const eyeFrameOptions = [
-    { id: 'square', label: 'Sharp Square', desc: 'Standard square finder frame' },
+    { id: 'square', label: 'Sharp Square', desc: 'Standard square outer box' },
     { id: 'extra-rounded', label: 'Smooth Rounded', desc: 'Curved modern corners' },
-    { id: 'dot', label: 'Circular Ring', desc: 'Round concentric circles' },
+    { id: 'dot', label: 'Circular Ring', desc: 'Concentric circular frame' },
+  ];
+
+  const eyeDotOptions = [
+    { id: 'square', label: 'Sharp Square', desc: 'Classic center module' },
+    { id: 'dot', label: 'Circular Dot', desc: 'Round center pupil' },
   ];
 
   const errorCorrectionOptions = [
     { id: 'L', label: 'Low (7%)', desc: 'Best for simple data & maximum scan density' },
-    { id: 'M', label: 'Medium (15%)', desc: 'Recommended standard for most everyday codes' },
-    { id: 'Q', label: 'Quartile (25%)', desc: 'High resilience against scratches and damage' },
-    { id: 'H', label: 'High (30%)', desc: 'Strongest recovery · Required when embedding logos' },
+    { id: 'M', label: 'Medium (15%)', desc: 'Standard for everyday clean print codes' },
+    { id: 'Q', label: 'Quartile (25%)', desc: 'High resilience against surface scratches' },
+    { id: 'H', label: 'High (30%)', desc: 'Strongest recovery · Required with brand logos' },
   ];
 
   return (
@@ -663,13 +754,13 @@ export default function QRCodeGenerator() {
           <div>
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-[11px] font-bold mb-2 shadow-2xs">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Multi-Format QR Engine &bull; 12 Content Types</span>
+              <span>Phase 3 &bull; Advanced QR Design & Branding Studio</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
               Professional QR Studio
             </h1>
             <p className="mt-1 text-xs sm:text-sm text-slate-500">
-              Create custom, 100% scannable QR codes for websites, contacts, WiFi, direct calls, maps, events, and app downloads.
+              Design production-grade branded QR codes with gradients, custom eye frames, logos, and real-time scan safety intelligence.
             </p>
           </div>
 
@@ -753,7 +844,7 @@ export default function QRCodeGenerator() {
               {/* DYNAMIC CONTENT INPUT FIELDS (12 Types) */}
               <div className="space-y-4 pt-4 border-t border-slate-100">
 
-                {/* 1. Plain Text */}
+                {/* 1. Plain Text (Placed First) */}
                 {activeTab === 'text' && (
                   <div className="space-y-1.5 animate-in fade-in duration-150">
                     <div className="flex justify-between items-center">
@@ -1467,23 +1558,32 @@ export default function QRCodeGenerator() {
 
             </div>
 
-            {/* STEP 2: CUSTOMIZE & DESIGN CARD */}
+            {/* STEP 2: CUSTOMIZE & DESIGN STUDIO CARD */}
             <div className="bg-white rounded-3xl p-6 sm:p-7 shadow-xs border border-slate-200/80 space-y-6">
               <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                 <div>
                   <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-600">Step 2</span>
                   <h2 className="text-lg font-extrabold text-slate-900">Customize QR Design</h2>
                 </div>
-                <span className="text-xs text-slate-400 font-medium">Fine-tune styling & logo</span>
+                <button
+                  type="button"
+                  onClick={handleResetDesign}
+                  className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-500 hover:text-rose-600 bg-slate-50 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 px-3 py-1.5 rounded-xl transition cursor-pointer"
+                  title="Reset all visual styling properties to default black-and-white"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset Design</span>
+                </button>
               </div>
 
               {/* Customization Sub-Navigation */}
               <div className="flex items-center gap-1.5 rounded-2xl bg-slate-100 p-1 text-xs font-semibold overflow-x-auto no-scrollbar">
                 {[
+                  { id: 'styles', label: 'Quick Styles', icon: Sparkles },
                   { id: 'pattern', label: 'Pattern & Eyes', icon: Grid },
-                  { id: 'colors', label: 'Colors', icon: Sliders },
+                  { id: 'colors', label: 'Colors & Fill', icon: Palette },
                   { id: 'branding', label: 'Brand Logo', icon: ImagePlus },
-                  { id: 'advanced', label: 'Error Correction', icon: Settings },
+                  { id: 'spacing', label: 'Margin & Safety', icon: Sliders },
                 ].map(sub => {
                   const Icon = sub.icon;
                   const isCurrent = customizeTab === sub.id;
@@ -1505,7 +1605,44 @@ export default function QRCodeGenerator() {
                 })}
               </div>
 
-              {/* SUBSECTION 1: PATTERN & EYES */}
+              {/* SUBSECTION 1: QUICK STYLES / PRESETS */}
+              {customizeTab === 'styles' && (
+                <div className="space-y-4 animate-in fade-in duration-200">
+                  <div className="space-y-1">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
+                      Curated Style Presets
+                    </label>
+                    <p className="text-[11px] text-slate-400">
+                      Click any preset to immediately style your QR code. Your data content remains 100% untouched.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                    {Object.entries(DESIGN_PRESETS).map(([key, preset]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => handleApplyPreset(key)}
+                        className="p-3.5 rounded-2xl border border-slate-200/80 bg-slate-50/60 hover:bg-white hover:border-indigo-500 text-left transition group cursor-pointer shadow-2xs hover:shadow-sm"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-extrabold text-xs text-slate-900 group-hover:text-indigo-600 transition">
+                            {preset.name}
+                          </span>
+                          <span className="text-[10px] uppercase font-bold text-slate-400 bg-white border border-slate-200 px-1.5 py-0.5 rounded-md">
+                            Preset
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-500 leading-snug">
+                          {preset.desc}
+                        </p>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* SUBSECTION 2: PATTERN & EYES */}
               {customizeTab === 'pattern' && (
                 <div className="space-y-6 animate-in fade-in duration-200">
                   {/* Dot Style Selection */}
@@ -1535,11 +1672,14 @@ export default function QRCodeGenerator() {
                     </div>
                   </div>
 
-                  {/* Eye Frame Shape Selection */}
+                  {/* Corner Eye Frame Style Selection */}
                   <div className="space-y-2.5 border-t border-slate-100 pt-5">
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
-                      Corner Eye Frame Shape
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
+                        Outer Eye Frame Shape
+                      </label>
+                      <span className="text-[10px] text-slate-400">Position locator border</span>
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                       {eyeFrameOptions.map(opt => {
                         const isSelected = qrSettings.eyeFrameStyle === opt.id;
@@ -1561,20 +1701,141 @@ export default function QRCodeGenerator() {
                       })}
                     </div>
                   </div>
+
+                  {/* Inner Eye Dot / Ball Selection */}
+                  <div className="space-y-2.5 border-t border-slate-100 pt-5">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
+                        Inner Eye Ball Shape
+                      </label>
+                      <span className="text-[10px] text-slate-400">Center finder pupil</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      {eyeDotOptions.map(opt => {
+                        const isSelected = qrSettings.eyeDotStyle === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => handleSettingChange('eyeDotStyle', opt.id)}
+                            className={`p-3 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                              isSelected 
+                                ? 'border-indigo-600 bg-indigo-50/50 shadow-2xs' 
+                                : 'border-slate-200/80 bg-slate-50/50 hover:bg-slate-100/70'
+                            }`}
+                          >
+                            <span className="font-bold text-xs text-slate-900">{opt.label}</span>
+                            <span className="text-[10px] text-slate-500 mt-1 leading-snug">{opt.desc}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Eye Custom Colors Toggle & Pickers */}
+                  <div className="border-t border-slate-100 pt-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">Custom Eye Colors</p>
+                        <p className="text-[10px] text-slate-500">Color the finder pattern eyes independently from modules</p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          checked={qrSettings.customEyeColor} 
+                          onChange={e => handleSettingChange('customEyeColor', e.target.checked)} 
+                          className="sr-only peer" 
+                        />
+                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                      </label>
+                    </div>
+
+                    {qrSettings.customEyeColor && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                        {/* Frame Color */}
+                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                          <div>
+                            <span className="block text-[10px] font-bold text-slate-500 uppercase">Eye Frame</span>
+                            <input 
+                              type="text" 
+                              value={qrSettings.eyeFrameColor} 
+                              maxLength={7}
+                              onChange={e => handleSettingChange('eyeFrameColor', e.target.value.toUpperCase())}
+                              className="bg-white px-2 py-1 border border-slate-200 rounded font-mono text-xs font-bold w-20 mt-1" 
+                            />
+                          </div>
+                          <input 
+                            type="color" 
+                            value={isValidHex(qrSettings.eyeFrameColor) ? qrSettings.eyeFrameColor : '#000000'}
+                            onChange={e => handleSettingChange('eyeFrameColor', e.target.value.toUpperCase())}
+                            className="w-10 h-10 rounded-lg cursor-pointer border border-slate-200" 
+                          />
+                        </div>
+
+                        {/* Ball / Pupil Color */}
+                        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between">
+                          <div>
+                            <span className="block text-[10px] font-bold text-slate-500 uppercase">Eye Ball</span>
+                            <input 
+                              type="text" 
+                              value={qrSettings.eyeDotColor} 
+                              maxLength={7}
+                              onChange={e => handleSettingChange('eyeDotColor', e.target.value.toUpperCase())}
+                              className="bg-white px-2 py-1 border border-slate-200 rounded font-mono text-xs font-bold w-20 mt-1" 
+                            />
+                          </div>
+                          <input 
+                            type="color" 
+                            value={isValidHex(qrSettings.eyeDotColor) ? qrSettings.eyeDotColor : '#000000'}
+                            onChange={e => handleSettingChange('eyeDotColor', e.target.value.toUpperCase())}
+                            className="w-10 h-10 rounded-lg cursor-pointer border border-slate-200" 
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
-              {/* SUBSECTION 2: COLORS */}
+              {/* SUBSECTION 3: COLORS & GRADIENT */}
               {customizeTab === 'colors' && (
-                <div className="space-y-5 animate-in fade-in duration-200">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* Foreground Color */}
-                    <div className="p-4 border border-slate-200/90 rounded-2xl bg-slate-50/60 flex items-center justify-between gap-4">
+                <div className="space-y-6 animate-in fade-in duration-200">
+                  {/* Foreground Mode: Solid vs Gradient */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
                       <div>
-                        <label htmlFor="fg-hex" className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                          Foreground (QR Dots)
-                        </label>
-                        <div className="flex items-center gap-1">
+                        <p className="text-xs font-bold text-slate-800">Foreground Fill Mode</p>
+                        <p className="text-[10px] text-slate-500">Choose between a single solid color or smooth gradient</p>
+                      </div>
+                      <div className="flex bg-slate-100 p-1 rounded-xl">
+                        <button
+                          type="button"
+                          onClick={() => handleSettingChange('isGradient', false)}
+                          className={`px-3 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                            !qrSettings.isGradient ? 'bg-white text-indigo-600 shadow-2xs' : 'text-slate-600'
+                          }`}
+                        >
+                          Solid
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSettingChange('isGradient', true)}
+                          className={`px-3 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                            qrSettings.isGradient ? 'bg-white text-indigo-600 shadow-2xs' : 'text-slate-600'
+                          }`}
+                        >
+                          Gradient
+                        </button>
+                      </div>
+                    </div>
+
+                    {!qrSettings.isGradient ? (
+                      /* Solid Color Selector */
+                      <div className="p-4 border border-slate-200/90 rounded-2xl bg-slate-50/60 flex items-center justify-between gap-4">
+                        <div>
+                          <label htmlFor="fg-hex" className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                            Foreground Color (Dots)
+                          </label>
                           <input 
                             id="fg-hex"
                             type="text" 
@@ -1584,28 +1845,130 @@ export default function QRCodeGenerator() {
                               const val = e.target.value.toUpperCase();
                               handleSettingChange('fgColor', val.startsWith('#') ? val : `#${val}`);
                             }} 
-                            className="bg-white px-2 py-1 border border-slate-200 rounded-lg font-mono text-xs font-bold text-slate-800 outline-none w-24" 
+                            className="bg-white px-2 py-1.5 border border-slate-200 rounded-lg font-mono text-xs font-bold text-slate-800 outline-none w-24" 
+                          />
+                        </div>
+                        <div className="relative w-12 h-12 rounded-xl overflow-hidden shadow-xs border-2 border-white ring-1 ring-slate-200 shrink-0">
+                          <input 
+                            type="color" 
+                            value={isValidHex(qrSettings.fgColor) ? qrSettings.fgColor : '#000000'} 
+                            onChange={e => handleSettingChange('fgColor', e.target.value.toUpperCase())} 
+                            className="absolute -top-3 -left-3 w-20 h-20 cursor-pointer" 
+                            aria-label="Foreground color picker"
                           />
                         </div>
                       </div>
-                      <div className="relative w-12 h-12 rounded-xl overflow-hidden shadow-xs border-2 border-white ring-1 ring-slate-200 shrink-0">
-                        <input 
-                          type="color" 
-                          value={isValidHex(qrSettings.fgColor) ? qrSettings.fgColor : '#000000'} 
-                          onChange={e => handleSettingChange('fgColor', e.target.value.toUpperCase())} 
-                          className="absolute -top-3 -left-3 w-20 h-20 cursor-pointer" 
-                          aria-label="Foreground color picker"
-                        />
+                    ) : (
+                      /* Gradient Controls */
+                      <div className="p-4 border border-slate-200 rounded-2xl bg-slate-50/60 space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {/* Start Color */}
+                          <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-200">
+                            <div>
+                              <span className="block text-[10px] font-bold text-slate-500 uppercase">Start Color</span>
+                              <input 
+                                type="text" 
+                                value={qrSettings.gradientStart} 
+                                maxLength={7}
+                                onChange={e => handleSettingChange('gradientStart', e.target.value.toUpperCase())}
+                                className="font-mono text-xs font-bold text-slate-800 outline-none w-20 mt-1" 
+                              />
+                            </div>
+                            <input 
+                              type="color" 
+                              value={isValidHex(qrSettings.gradientStart) ? qrSettings.gradientStart : '#000000'}
+                              onChange={e => handleSettingChange('gradientStart', e.target.value.toUpperCase())}
+                              className="w-9 h-9 rounded-lg cursor-pointer border border-slate-200" 
+                            />
+                          </div>
+
+                          {/* End Color */}
+                          <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-slate-200">
+                            <div>
+                              <span className="block text-[10px] font-bold text-slate-500 uppercase">End Color</span>
+                              <input 
+                                type="text" 
+                                value={qrSettings.gradientEnd} 
+                                maxLength={7}
+                                onChange={e => handleSettingChange('gradientEnd', e.target.value.toUpperCase())}
+                                className="font-mono text-xs font-bold text-slate-800 outline-none w-20 mt-1" 
+                              />
+                            </div>
+                            <input 
+                              type="color" 
+                              value={isValidHex(qrSettings.gradientEnd) ? qrSettings.gradientEnd : '#4F46E5'}
+                              onChange={e => handleSettingChange('gradientEnd', e.target.value.toUpperCase())}
+                              className="w-9 h-9 rounded-lg cursor-pointer border border-slate-200" 
+                            />
+                          </div>
+                        </div>
+
+                        {/* Direction Pills */}
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1.5">
+                            Gradient Direction
+                          </label>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                            {[
+                              { id: 'diagonal', label: 'Diagonal ↘' },
+                              { id: 'horizontal', label: 'Horizontal →' },
+                              { id: 'vertical', label: 'Vertical ↓' },
+                              { id: 'radial', label: 'Radial ⊙' },
+                            ].map(dir => (
+                              <button
+                                key={dir.id}
+                                type="button"
+                                onClick={() => handleSettingChange('gradientDirection', dir.id)}
+                                className={`py-1.5 text-xs font-bold rounded-lg border transition cursor-pointer ${
+                                  qrSettings.gradientDirection === dir.id 
+                                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs' 
+                                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                                }`}
+                              >
+                                {dir.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Background Mode: Solid vs Transparent */}
+                  <div className="border-t border-slate-100 pt-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">Background Surface</p>
+                        <p className="text-[10px] text-slate-500">Solid color or transparent canvas</p>
+                      </div>
+                      <div className="flex bg-slate-100 p-1 rounded-xl">
+                        <button
+                          type="button"
+                          onClick={() => handleSettingChange('isTransparentBg', false)}
+                          className={`px-3 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                            !qrSettings.isTransparentBg ? 'bg-white text-indigo-600 shadow-2xs' : 'text-slate-600'
+                          }`}
+                        >
+                          Solid
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSettingChange('isTransparentBg', true)}
+                          className={`px-3 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                            qrSettings.isTransparentBg ? 'bg-white text-indigo-600 shadow-2xs' : 'text-slate-600'
+                          }`}
+                        >
+                          Transparent
+                        </button>
                       </div>
                     </div>
 
-                    {/* Background Color */}
-                    <div className="p-4 border border-slate-200/90 rounded-2xl bg-slate-50/60 flex items-center justify-between gap-4">
-                      <div>
-                        <label htmlFor="bg-hex" className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
-                          Background Surface
-                        </label>
-                        <div className="flex items-center gap-1">
+                    {!qrSettings.isTransparentBg ? (
+                      <div className="p-4 border border-slate-200/90 rounded-2xl bg-slate-50/60 flex items-center justify-between gap-4">
+                        <div>
+                          <label htmlFor="bg-hex" className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                            Background Color
+                          </label>
                           <input 
                             id="bg-hex"
                             type="text" 
@@ -1615,55 +1978,35 @@ export default function QRCodeGenerator() {
                               const val = e.target.value.toUpperCase();
                               handleSettingChange('bgColor', val.startsWith('#') ? val : `#${val}`);
                             }} 
-                            className="bg-white px-2 py-1 border border-slate-200 rounded-lg font-mono text-xs font-bold text-slate-800 outline-none w-24" 
+                            className="bg-white px-2 py-1.5 border border-slate-200 rounded-lg font-mono text-xs font-bold text-slate-800 outline-none w-24" 
+                          />
+                        </div>
+                        <div className="relative w-12 h-12 rounded-xl overflow-hidden shadow-xs border-2 border-white ring-1 ring-slate-200 shrink-0">
+                          <input 
+                            type="color" 
+                            value={isValidHex(qrSettings.bgColor) ? qrSettings.bgColor : '#FFFFFF'} 
+                            onChange={e => handleSettingChange('bgColor', e.target.value.toUpperCase())} 
+                            className="absolute -top-3 -left-3 w-20 h-20 cursor-pointer" 
+                            aria-label="Background color picker"
                           />
                         </div>
                       </div>
-                      <div className="relative w-12 h-12 rounded-xl overflow-hidden shadow-xs border-2 border-white ring-1 ring-slate-200 shrink-0">
-                        <input 
-                          type="color" 
-                          value={isValidHex(qrSettings.bgColor) ? qrSettings.bgColor : '#FFFFFF'} 
-                          onChange={e => handleSettingChange('bgColor', e.target.value.toUpperCase())} 
-                          className="absolute -top-3 -left-3 w-20 h-20 cursor-pointer" 
-                          aria-label="Background color picker"
-                        />
+                    ) : (
+                      <div className="rounded-2xl bg-amber-50/80 border border-amber-200 p-3.5 flex items-start gap-2.5 text-xs text-amber-800">
+                        <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-bold">Transparent Canvas Active</p>
+                          <p className="text-[11px] text-amber-700 mt-0.5 leading-relaxed">
+                            Exported PNG and SVG will have no background fill. Note: JPG does not support transparency and will automatically use a clean white background upon export.
+                          </p>
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
-
-                  {/* Contrast Guard Notification */}
-                  {isLowContrast ? (
-                    <div className="rounded-2xl bg-amber-50/90 border border-amber-200 p-3.5 flex items-start gap-2.5 text-xs text-amber-800">
-                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                      <div>
-                        <p className="font-bold">Low Color Contrast Notice</p>
-                        <p className="text-[11px] text-amber-700 mt-0.5 leading-relaxed">
-                          Your foreground and background colors are very close in luminance ({contrastRatio.toFixed(1)}:1). Darker foreground on lighter background ensures 100% quick scanning across all phone cameras.
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="rounded-2xl bg-slate-50 p-3 flex items-center justify-between text-xs text-slate-500 border border-slate-100">
-                      <span className="flex items-center gap-1.5 font-medium">
-                        <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>High scan contrast ratio ({contrastRatio.toFixed(1)}:1)</span>
-                      </span>
-                      <button 
-                        type="button" 
-                        onClick={() => {
-                          handleSettingChange('fgColor', '#000000');
-                          handleSettingChange('bgColor', '#FFFFFF');
-                        }} 
-                        className="text-[11px] font-bold text-indigo-600 hover:underline cursor-pointer"
-                      >
-                        Reset to Default
-                      </button>
-                    </div>
-                  )}
                 </div>
               )}
 
-              {/* SUBSECTION 3: BRAND LOGO */}
+              {/* SUBSECTION 4: BRAND LOGO */}
               {customizeTab === 'branding' && (
                 <div className="space-y-5 animate-in fade-in duration-200">
                   <div className="p-4 sm:p-5 border border-dashed border-slate-300 rounded-2xl bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -1705,39 +2048,133 @@ export default function QRCodeGenerator() {
                   </div>
 
                   {qrSettings.logo && (
-                    <div className="space-y-2 rounded-2xl border border-slate-100 bg-slate-50/50 p-4">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="font-bold text-slate-700">Logo Scale</span>
-                        <span className="font-mono text-indigo-600 font-bold">{Math.round(qrSettings.logoSize * 100)}%</span>
+                    <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/50 p-4">
+                      {/* Logo Size Selector & Slider */}
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-bold text-slate-700">Logo Scale Size</span>
+                          <span className="font-mono text-indigo-600 font-bold">{Math.round(qrSettings.logoSize * 100)}%</span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 mb-2">
+                          {[
+                            { label: 'Small', size: 0.20 },
+                            { label: 'Medium', size: 0.30 },
+                            { label: 'Large', size: 0.38 },
+                          ].map(s => (
+                            <button
+                              key={s.label}
+                              type="button"
+                              onClick={() => handleSettingChange('logoSize', s.size)}
+                              className={`py-1.5 text-xs font-bold rounded-xl border transition cursor-pointer ${
+                                Math.abs(qrSettings.logoSize - s.size) < 0.03
+                                  ? 'bg-indigo-600 text-white border-indigo-600'
+                                  : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                              }`}
+                            >
+                              {s.label} ({Math.round(s.size * 100)}%)
+                            </button>
+                          ))}
+                        </div>
+                        <input 
+                          type="range" 
+                          min="0.15" 
+                          max="0.40" 
+                          step="0.01" 
+                          value={qrSettings.logoSize} 
+                          onChange={e => handleSettingChange('logoSize', parseFloat(e.target.value))} 
+                          className="w-full accent-indigo-600 cursor-pointer" 
+                        />
+                        <p className="text-[10px] text-slate-400">
+                          Capped at 40% to guarantee QR readability. Error correction level is maintained at High.
+                        </p>
                       </div>
-                      <input 
-                        type="range" 
-                        min="0.15" 
-                        max="0.40" 
-                        step="0.05" 
-                        value={qrSettings.logoSize} 
-                        onChange={e => handleSettingChange('logoSize', parseFloat(e.target.value))} 
-                        className="w-full accent-indigo-600 cursor-pointer" 
-                      />
-                      <p className="text-[10px] text-slate-400">
-                        Capped at 40% to guarantee QR readability. Error correction level is maintained at High.
-                      </p>
+
+                      {/* Logo Background Cutout Card */}
+                      <div className="border-t border-slate-200/80 pt-3 flex items-center justify-between">
+                        <div>
+                          <p className="text-xs font-bold text-slate-800">Logo Background Cutout</p>
+                          <p className="text-[10px] text-slate-500">Adds generous white clearance around the logo</p>
+                        </div>
+                        <div className="flex bg-slate-200/70 p-1 rounded-xl">
+                          <button
+                            type="button"
+                            onClick={() => handleSettingChange('logoBg', 'none')}
+                            className={`px-3 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                              qrSettings.logoBg === 'none' ? 'bg-white text-indigo-600 shadow-2xs' : 'text-slate-600'
+                            }`}
+                          >
+                            Standard Cutout
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSettingChange('logoBg', 'white')}
+                            className={`px-3 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                              qrSettings.logoBg === 'white' ? 'bg-white text-indigo-600 shadow-2xs' : 'text-slate-600'
+                            }`}
+                          >
+                            Wide Margin
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   )}
 
                   <div className="rounded-2xl bg-indigo-50/70 border border-indigo-100 p-3.5 flex items-start gap-2 text-xs text-indigo-800">
                     <Info className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
                     <p className="text-[11px] leading-relaxed">
-                      <strong>Best Practice:</strong> Use square logos with transparent backgrounds. Error correction level is automatically set to High to preserve readability.
+                      <strong>Best Practice:</strong> Use square logos with transparent backgrounds. Error correction level is automatically recommended at High (30%) to preserve full scannability.
                     </p>
                   </div>
                 </div>
               )}
 
-              {/* SUBSECTION 4: ADVANCED ERROR CORRECTION */}
-              {customizeTab === 'advanced' && (
-                <div className="space-y-4 animate-in fade-in duration-200">
+              {/* SUBSECTION 5: SPACING, ERROR CORRECTION & SCAN SAFETY */}
+              {customizeTab === 'spacing' && (
+                <div className="space-y-6 animate-in fade-in duration-200">
+                  {/* Quiet Zone Margin Adjustment */}
                   <div className="space-y-2">
+                    <div className="flex justify-between items-center text-xs">
+                      <div>
+                        <p className="font-bold text-slate-800 uppercase tracking-wider">Quiet Zone / QR Margin</p>
+                        <p className="text-[10px] text-slate-500">Surrounding clear border required for scanner orientation</p>
+                      </div>
+                      <span className="font-mono text-indigo-600 font-bold">{qrSettings.margin}px</span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 mb-2">
+                      {[
+                        { label: 'Compact', margin: 6 },
+                        { label: 'Standard', margin: 12 },
+                        { label: 'Generous', margin: 20 },
+                      ].map(m => (
+                        <button
+                          key={m.label}
+                          type="button"
+                          onClick={() => handleSettingChange('margin', m.margin)}
+                          className={`py-2 text-xs font-bold rounded-xl border transition cursor-pointer ${
+                            qrSettings.margin === m.margin 
+                              ? 'bg-indigo-600 text-white border-indigo-600' 
+                              : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          {m.label} ({m.margin}px)
+                        </button>
+                      ))}
+                    </div>
+
+                    <input 
+                      type="range" 
+                      min="4" 
+                      max="28" 
+                      step="2" 
+                      value={qrSettings.margin} 
+                      onChange={e => handleSettingChange('margin', parseInt(e.target.value))} 
+                      className="w-full accent-indigo-600 cursor-pointer" 
+                    />
+                  </div>
+
+                  {/* Error Correction Selection */}
+                  <div className="space-y-2 border-t border-slate-100 pt-5">
                     <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
                       Error Correction Level
                     </label>
@@ -1783,8 +2220,8 @@ export default function QRCodeGenerator() {
               {/* CENTERPIECE PREVIEW CARD */}
               <div className="bg-white rounded-3xl p-6 sm:p-7 shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-slate-200/80 flex flex-col items-center">
                 
-                {/* Live Preview Indicator */}
-                <div className="w-full flex items-center justify-between mb-5 border-b border-slate-100 pb-3">
+                {/* Live Preview & Scan Safety Indicator Header */}
+                <div className="w-full flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
                   <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold">
                     <span className="relative flex h-2 w-2">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
@@ -1793,26 +2230,60 @@ export default function QRCodeGenerator() {
                     <span>Live Preview</span>
                   </div>
 
-                  <span className="text-[11px] font-mono font-bold text-slate-400">
-                    Auto-generated
-                  </span>
+                  {/* Scan Safety Badge */}
+                  <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${
+                    scanSafety.status === 'excellent' 
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                      : scanSafety.status === 'warning'
+                      ? 'bg-amber-50 text-amber-700 border-amber-200'
+                      : 'bg-rose-50 text-rose-700 border-rose-200'
+                  }`}>
+                    {scanSafety.status === 'excellent' && <ShieldCheck className="w-3.5 h-3.5" />}
+                    {scanSafety.status === 'warning' && <AlertTriangle className="w-3.5 h-3.5" />}
+                    {scanSafety.status === 'unsafe' && <X className="w-3.5 h-3.5" />}
+                    <span>{scanSafety.label}</span>
+                  </div>
                 </div>
 
                 {/* QR Canvas Centerpiece Surface */}
                 <div 
-                  className="p-5 rounded-2xl mb-6 border border-slate-200/90 flex justify-center items-center transition-colors duration-300 shadow-sm max-w-full overflow-hidden"
-                  style={{ backgroundColor: qrSettings.bgColor }}
+                  className={`p-4 rounded-2xl mb-4 border border-slate-200/90 flex justify-center items-center transition-colors duration-300 shadow-sm max-w-full overflow-hidden ${
+                    qrSettings.isTransparentBg ? 'bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:12px_12px] bg-slate-50' : ''
+                  }`}
+                  style={!qrSettings.isTransparentBg ? { backgroundColor: qrSettings.bgColor } : undefined}
                 >
                   <div ref={qrRef} className="rounded-xl overflow-hidden [&>canvas]:max-w-full [&>canvas]:h-auto flex justify-center items-center" />
+                </div>
+
+                {/* Live Scan Safety Status Feedback Box */}
+                <div className={`w-full p-3 rounded-2xl border text-xs mb-4 ${
+                  scanSafety.status === 'excellent'
+                    ? 'bg-slate-50 border-slate-200 text-slate-600'
+                    : scanSafety.status === 'warning'
+                    ? 'bg-amber-50 border-amber-200 text-amber-800'
+                    : 'bg-rose-50 border-rose-200 text-rose-800'
+                }`}>
+                  <div className="flex items-center justify-between font-bold text-[11px] uppercase tracking-wider mb-0.5">
+                    <span>Scan Safety Assessment</span>
+                    <span>Contrast: {scanSafety.contrastRatio.toFixed(1)}:1</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed">
+                    {scanSafety.issues.length > 0 ? scanSafety.issues[0] : scanSafety.summary}
+                  </p>
                 </div>
 
                 {/* Format & Quality Selectors */}
                 <div className="w-full space-y-3.5">
                   {/* Format Selector Pills */}
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
-                      Export Format
-                    </label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                        Export Format
+                      </label>
+                      {qrSettings.isTransparentBg && qrSettings.format === 'jpeg' && (
+                        <span className="text-[10px] text-amber-600 font-bold">White BG used for JPG</span>
+                      )}
+                    </div>
                     <div className="grid grid-cols-4 gap-1.5 p-1 bg-slate-100 rounded-xl">
                       {[
                         { id: 'png', label: 'PNG' },
@@ -1894,10 +2365,10 @@ export default function QRCodeGenerator() {
               {/* Sidebar Support / Help Note */}
               <div className="rounded-2xl border border-slate-200/80 bg-white p-4 text-xs text-slate-500 space-y-1 shadow-2xs">
                 <p className="font-bold text-slate-800 flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" /> Universal Scannability
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" /> Professional Design Standards
                 </p>
                 <p className="text-[11px] leading-relaxed text-slate-500">
-                  Every payload follows official specifications (RFC 2426 vCard, RFC 5545 iCalendar, URI schemas) to ensure immediate recognition across iOS, Android, and hardware barcode scanners.
+                  Rootixa QR Studio renders vector SVGs and pixel-perfect rasters with standards-compliant module positioning and guaranteed corner finder visibility.
                 </p>
               </div>
 
