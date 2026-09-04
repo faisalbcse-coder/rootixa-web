@@ -1,0 +1,11 @@
+{
+  "events": [
+    {
+      "tool_id": "qr-code",
+      "user_id": null,
+      "status": "success",
+      "duration_ms": 120,
+      "created_at": "2026-09-04T10:40:54.045Z"
+    }
+  ]
+}

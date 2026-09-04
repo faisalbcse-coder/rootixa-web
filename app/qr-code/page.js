@@ -1,6 +1,7 @@
 "use client";
 
 import Link from 'next/link';
+import Image from 'next/image';
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { 
   Link as LinkIcon, Type, Wifi, Mail, Download, Palette, CheckCircle, LayoutGrid, 
@@ -9,6 +10,11 @@ import {
 } from 'lucide-react';
 
 const PREVIEW_SIZE = 320;
+const POSTER_PRESETS = {
+  A4: { label: 'A4 · 210 × 297 mm', width: 210, height: 297 },
+  B4: { label: 'B4 · 250 × 353 mm', width: 250, height: 353 },
+  Letter: { label: 'Letter · 216 × 279 mm', width: 216, height: 279 },
+};
 
 // === Advertisement Placeholder Component ===
 const AdSpace = ({ className, text = "Advertisement Space" }) => (
@@ -39,7 +45,7 @@ export default function QRCodeGenerator() {
   const [qrData, setQrData] = useState({
     url: 'https://rootixa.com', 
     text: '', 
-    wifiSsid: '', wifiPassword: '', wifiEncryption: 'WPA', 
+    wifiSsid: '', wifiPassword: '', wifiEncryption: 'WPA', wifiTitle: 'FREE WiFi', wifiSubtitle: 'Scan the code to connect instantly',
     email: '' 
   });
 
@@ -55,12 +61,16 @@ export default function QRCodeGenerator() {
   });
 
   // Lead Generation & Tracking
-  const [downloadCount, setDownloadCount] = useState(() => typeof window === 'undefined' ? 0 : Number(localStorage.getItem('qr_dl_count') || 0));
+  const [downloadCount, setDownloadCount] = useState(0);
   const [showModal, setShowModal] = useState(false);
   const [userEmail, setUserEmail] = useState('');
-  const [isSubscribed, setIsSubscribed] = useState(() => typeof window !== 'undefined' && localStorage.getItem('qr_user_subscribed') === 'true');
+  const [isSubscribed, setIsSubscribed] = useState(false);
   const [isDownloaded, setIsDownloaded] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [posterPreview, setPosterPreview] = useState(null);
+  const [posterSettings, setPosterSettings] = useState({ paper: 'A4', width: 210, height: 297 });
+  const [isPosterPreparing, setIsPosterPreparing] = useState(false);
+  const [posterError, setPosterError] = useState('');
   
   const [openAccordion, setOpenAccordion] = useState('design'); 
   
@@ -107,6 +117,15 @@ export default function QRCodeGenerator() {
     return () => { isActive = false; };
   }, []);
 
+  useEffect(() => {
+    const restoreSavedDownloadState = () => {
+      setDownloadCount(Number(localStorage.getItem('qr_dl_count') || 0));
+      setIsSubscribed(localStorage.getItem('qr_user_subscribed') === 'true');
+    };
+    const timer = window.setTimeout(restoreSavedDownloadState, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   useEffect(() => { updateQRCode(); }, [updateQRCode]);
 
   const handleDataChange = (field, value) => setQrData(prev => ({ ...prev, [field]: value }));
@@ -143,6 +162,14 @@ export default function QRCodeGenerator() {
     setIsExporting(true);
     try {
       await withExportResolution((qrCode) => qrCode.download({ name: "Rootixa-QR", extension: qrSettings.format }));
+      // Non-blocking platform usage tracking
+      try {
+        fetch("/api/tools/track", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ toolId: "qr-code", status: "success" }),
+        }).catch(() => {});
+      } catch {}
     } finally {
       setIsExporting(false);
     }
@@ -167,74 +194,194 @@ export default function QRCodeGenerator() {
     await executeDownload(false);
   };
 
-  // === WiFi Print Poster Logic ===
-  const handlePrintWifi = async () => {
-    if (!qrCodeInstance.current || isExporting) return;
-    setIsExporting(true);
-    let qrDataUrl;
+  const blobToDataUrl = (blob) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+
+  const openWifiPosterPreview = async () => {
+    if (!qrCodeInstance.current || isPosterPreparing) return;
+    setIsPosterPreparing(true);
+    setPosterError('');
     try {
       const imageBlob = await withExportResolution((qrCode) => qrCode.getRawData('png'));
-      qrDataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(imageBlob);
-      });
+      setPosterPreview({ qrDataUrl: await blobToDataUrl(imageBlob) });
     } finally {
-      setIsExporting(false);
+      setIsPosterPreparing(false);
     }
-    
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
-    const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[character]));
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>Free WiFi Sign</title>
-          <style>
-            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: #fff; text-align: center; color: #1f2937; }
-            .container { border: 2px dashed #cbd5e1; padding: 40px; border-radius: 30px; max-width: 600px; margin: 20px; }
-            h1 { font-size: 3.5rem; color: #4F46E5; margin: 0 0 10px 0; letter-spacing: -1px; }
-            .subtitle { font-size: 1.5rem; color: #6b7280; margin-bottom: 40px; }
-            .qr-box { padding: 20px; border: 4px solid #f1f5f9; border-radius: 24px; display: inline-block; margin-bottom: 40px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); }
-            img { width: 350px; height: 350px; }
-            .network-info { background: #f8fafc; padding: 25px 40px; border-radius: 20px; font-size: 1.5rem; }
-            .label { font-size: 1rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 5px; font-weight: bold; }
-            .value { font-weight: 800; font-size: 2rem; color: #0f172a; margin-bottom: 20px; }
-            .value:last-child { margin-bottom: 0; }
-            .footer { margin-top: 30px; font-size: 1rem; color: #94a3b8; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <h1>Dear Valuable Customer</h1>
-            <div class="subtitle">Enjoy our complimentary high-speed WiFi. Scan to connect instantly!</div>
-            
-            <div class="qr-box">
-              <img src="${qrDataUrl}" />
-            </div>
-            
-            <div class="network-info">
-              <div class="label">Network Name</div>
-              <div class="value">${escapeHtml(qrData.wifiSsid || 'Guest WiFi')}</div>
-              
-              <div class="label">Password</div>
-              <div class="value">${escapeHtml(qrData.wifiPassword || 'None')}</div>
-            </div>
-            
-            <div class="footer">Powered by Rootixa QR Generator</div>
-          </div>
-          <script>
-            setTimeout(() => { window.print(); window.close(); }, 500);
-          </script>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
+  };
+
+  const selectPosterPaper = (paper) => {
+    if (paper === 'custom') return setPosterSettings((current) => ({ ...current, paper }));
+    const preset = POSTER_PRESETS[paper];
+    setPosterSettings({ paper, width: preset.width, height: preset.height });
+  };
+
+  const createPosterDataUrl = async () => {
+    if (!posterPreview) return null;
+    const longestSide = Math.max(posterSettings.width, posterSettings.height);
+    const pixelsPerMm = Math.min(11.81, 5000 / longestSide);
+    const width = Math.round(posterSettings.width * pixelsPerMm);
+    const height = Math.round(posterSettings.height * pixelsPerMm);
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    const scale = Math.min(width / 210, height / 297);
+    const roundedRect = (x, y, rectWidth, rectHeight, radius) => {
+      context.beginPath();
+      context.roundRect(x, y, rectWidth, rectHeight, radius);
+      context.fill();
+    };
+    const drawText = (text, y, font, color, maxWidth) => {
+      context.font = font;
+      context.fillStyle = color;
+      context.textAlign = 'center';
+      const words = text.split(' ');
+      let line = '';
+      const lines = [];
+      words.forEach((word) => {
+        const nextLine = `${line}${word} `;
+        if (context.measureText(nextLine).width > maxWidth && line) {
+          lines.push(line.trim());
+          line = `${word} `;
+        } else line = nextLine;
+      });
+      lines.push(line.trim());
+      const lineHeight = Number(font.match(/(\d+)px/)?.[1] || 16) * 1.35;
+      lines.forEach((lineText, index) => context.fillText(lineText, width / 2, y + index * lineHeight));
+      return y + lines.length * lineHeight;
+    };
+
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, width, height);
+    const padding = 15 * scale;
+    context.fillStyle = '#f8fafc';
+    roundedRect(padding, padding, width - padding * 2, height - padding * 2, 8 * scale);
+    let y = 42 * scale;
+    y = drawText(qrData.wifiTitle || 'FREE WiFi', y, `800 ${11 * scale}px Arial`, '#4f46e5', width - padding * 4) + 7 * scale;
+    y = drawText(qrData.wifiSubtitle || 'Scan the code to connect instantly', y, `500 ${4.3 * scale}px Arial`, '#64748b', width - padding * 5) + 9 * scale;
+    const qrImage = await new Promise((resolve, reject) => {
+      const image = new window.Image();
+      image.decoding = 'sync';
+      image.onload = () => resolve(image);
+      image.onerror = reject;
+      image.src = posterPreview.qrDataUrl;
+    });
+    if (!qrImage.naturalWidth || !qrImage.naturalHeight) throw new Error('QR image could not be prepared.');
+    if (qrImage.decode) await qrImage.decode();
+    const qrSize = Math.min(width * 0.62, height * 0.36);
+    const qrX = (width - qrSize) / 2;
+    context.fillStyle = '#ffffff';
+    roundedRect(qrX - 5 * scale, y - 5 * scale, qrSize + 10 * scale, qrSize + 10 * scale, 5 * scale);
+    context.imageSmoothingEnabled = false;
+    context.drawImage(qrImage, qrX, y, qrSize, qrSize);
+    y += qrSize + 16 * scale;
+    context.fillStyle = '#e0e7ff';
+    roundedRect(padding * 2, y, width - padding * 4, 35 * scale, 5 * scale);
+    y = drawText('NETWORK NAME', y + 9 * scale, `700 ${3 * scale}px Arial`, '#64748b', width - padding * 5) + 3 * scale;
+    y = drawText(qrData.wifiSsid || 'Guest WiFi', y, `800 ${6 * scale}px Arial`, '#0f172a', width - padding * 5) + 9 * scale;
+    y = drawText('PASSWORD', y, `700 ${3 * scale}px Arial`, '#64748b', width - padding * 5) + 3 * scale;
+    drawText(qrData.wifiPassword || 'None', y, `800 ${6 * scale}px Arial`, '#0f172a', width - padding * 5);
+    context.font = `500 ${2.6 * scale}px Arial`;
+    context.fillStyle = '#94a3b8';
+    context.textAlign = 'center';
+    context.fillText('Powered by Rootixa QR Generator', width / 2, height - 24 * scale);
+    return canvas.toDataURL('image/png');
+  };
+
+  const downloadWifiPoster = async () => {
+    setIsPosterPreparing(true);
+    setPosterError('');
+    try {
+      const dataUrl = await createPosterDataUrl();
+      if (!dataUrl) throw new Error('Poster preview is not ready.');
+      const link = document.createElement('a');
+      const response = await fetch(dataUrl);
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      link.href = objectUrl;
+      link.download = `Rootixa-WiFi-Poster-${posterSettings.paper}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      setPosterError('Download তৈরি করা যায়নি। আবার চেষ্টা করুন।');
+    } finally {
+      setIsPosterPreparing(false);
+    }
+  };
+
+  const printWifiPoster = async () => {
+    setIsPosterPreparing(true);
+    try {
+      const dataUrl = await createPosterDataUrl();
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) return;
+      printWindow.document.write(`<html><head><title>Rootixa WiFi Poster</title><style>@page { size: ${posterSettings.width}mm ${posterSettings.height}mm; margin: 0; } body { margin: 0; } img { display: block; width: ${posterSettings.width}mm; height: ${posterSettings.height}mm; }</style></head><body><img src="${dataUrl}" onload="window.print()" /></body></html>`);
+      printWindow.document.close();
+    } finally {
+      setIsPosterPreparing(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] font-sans text-gray-800 pb-20">
+
+      {posterPreview && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 p-4 backdrop-blur-sm">
+          <div className="mx-auto my-4 w-full max-w-5xl rounded-3xl bg-white p-5 shadow-2xl md:p-7">
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-indigo-600">WiFi poster</p>
+                <h2 className="text-2xl font-extrabold text-slate-900">Preview before print or download</h2>
+                <p className="mt-1 text-sm text-slate-500">Your selected content is automatically kept on one page.</p>
+              </div>
+              <button onClick={() => setPosterPreview(null)} className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700" aria-label="Close poster preview"><X /></button>
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
+              <aside className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-500">Paper size</label>
+                <select value={posterSettings.paper} onChange={(event) => selectPosterPaper(event.target.value)} className="mb-4 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-bold text-slate-700 outline-none focus:border-indigo-500">
+                  {Object.entries(POSTER_PRESETS).map(([key, preset]) => <option key={key} value={key}>{preset.label}</option>)}
+                  <option value="custom">Custom size</option>
+                </select>
+                {posterSettings.paper === 'custom' && (
+                  <div className="mb-4 grid grid-cols-2 gap-2">
+                    <label className="text-xs font-bold text-slate-500">Width (mm)<input type="number" min="100" max="1000" value={posterSettings.width} onChange={(event) => setPosterSettings((current) => ({ ...current, width: Number(event.target.value) || 100 }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 text-sm text-slate-800 outline-none focus:border-indigo-500" /></label>
+                    <label className="text-xs font-bold text-slate-500">Height (mm)<input type="number" min="100" max="1400" value={posterSettings.height} onChange={(event) => setPosterSettings((current) => ({ ...current, height: Number(event.target.value) || 100 }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 text-sm text-slate-800 outline-none focus:border-indigo-500" /></label>
+                  </div>
+                )}
+                <p className="mb-5 rounded-xl bg-indigo-50 p-3 text-xs leading-5 text-indigo-700">{posterSettings.width} × {posterSettings.height} mm · One-page layout</p>
+                <button onClick={downloadWifiPoster} disabled={isPosterPreparing} className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-indigo-700 disabled:cursor-wait disabled:opacity-70"><Download className="w-4 h-4" /> Download poster PNG</button>
+                <button onClick={printWifiPoster} disabled={isPosterPreparing} className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-wait disabled:opacity-70"><Printer className="w-4 h-4" /> Print this size</button>
+                {posterError && <p className="mt-3 text-xs font-medium text-rose-600">{posterError}</p>}
+              </aside>
+
+              <div className="flex max-h-[70vh] items-center justify-center overflow-auto rounded-2xl bg-slate-200 p-5">
+                <div className="w-full max-w-[430px] shrink-0 bg-slate-50 p-5 text-center shadow-xl" style={{ aspectRatio: `${posterSettings.width} / ${posterSettings.height}` }}>
+                  <div className="flex h-full flex-col items-center rounded-2xl border border-slate-200 bg-white px-4 py-5">
+                    <h3 className="text-xl font-extrabold text-indigo-600">{qrData.wifiTitle || 'FREE WiFi'}</h3>
+                    <p className="mt-1 text-xs text-slate-500">{qrData.wifiSubtitle || 'Scan the code to connect instantly'}</p>
+                    <div className="my-auto rounded-2xl border-4 border-slate-100 bg-white p-2 shadow-sm"><Image src={posterPreview.qrDataUrl} alt="WiFi QR code" width={144} height={144} unoptimized className="w-36 max-w-full" /></div>
+                    <div className="w-full rounded-xl bg-indigo-50 px-3 py-3">
+                      <p className="text-[9px] font-bold tracking-widest text-slate-500">NETWORK NAME</p>
+                      <p className="truncate text-sm font-extrabold text-slate-900">{qrData.wifiSsid || 'Guest WiFi'}</p>
+                      <p className="mt-2 text-[9px] font-bold tracking-widest text-slate-500">PASSWORD</p>
+                      <p className="truncate text-sm font-extrabold text-slate-900">{qrData.wifiPassword || 'None'}</p>
+                    </div>
+                    <p className="mt-3 text-[9px] text-slate-400">Powered by Rootixa QR Generator</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Lead Generation Modal */}
       {showModal && (
@@ -319,6 +466,16 @@ export default function QRCodeGenerator() {
                     <select value={qrData.wifiEncryption} onChange={e => handleDataChange('wifiEncryption', e.target.value)} className="w-1/3 p-4 bg-gray-50 border rounded-2xl font-bold outline-none focus:border-indigo-500">
                       <option value="WPA">WPA/WPA2</option><option value="WEP">WEP</option><option value="nopass">None</option>
                     </select>
+                  </div>
+                  <div className="grid gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
+                    <div>
+                      <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-indigo-700">Poster headline</label>
+                      <input value={qrData.wifiTitle} maxLength={48} onChange={e => handleDataChange('wifiTitle', e.target.value)} className="w-full rounded-xl border border-indigo-100 bg-white p-3 text-sm font-bold text-gray-800 outline-none focus:border-indigo-500" placeholder="FREE WiFi" />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-indigo-700">Poster subheadline</label>
+                      <input value={qrData.wifiSubtitle} maxLength={90} onChange={e => handleDataChange('wifiSubtitle', e.target.value)} className="w-full rounded-xl border border-indigo-100 bg-white p-3 text-sm text-gray-800 outline-none focus:border-indigo-500" placeholder="Scan the code to connect instantly" />
+                    </div>
                   </div>
                 </div>
               )}
@@ -496,11 +653,11 @@ export default function QRCodeGenerator() {
                   {/* Print WiFi Sign Button */}
                   {activeTab === 'wifi' && (
                     <button 
-                      onClick={handlePrintWifi}
-                      disabled={isExporting}
+                      onClick={openWifiPosterPreview}
+                      disabled={isPosterPreparing}
                       className="w-full mb-3 py-3 rounded-xl font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition-all flex justify-center items-center gap-2 disabled:cursor-wait disabled:opacity-70"
                     >
-                      <Printer className="w-4 h-4" /> Print Free WiFi Poster
+                      <Printer className="w-4 h-4" /> {isPosterPreparing ? 'Preparing poster…' : 'Preview WiFi Poster'}
                     </button>
                   )}
 

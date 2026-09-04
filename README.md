@@ -1,5 +1,24 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
 
+## Admin authentication
+
+Admin authentication is isolated under `/admin/*` and uses Supabase Auth for sign-in, but **authorization** (roles/status) is stored in the `public.admins` table (not in `app_metadata`).
+
+1. Copy `.env.example` to `.env.local` and fill:
+
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` (server-only, required for creating/deleting Auth users from the dashboard)
+
+2. Run the SQL migration in `supabase/migrations/20260730_admins.sql`.
+3. Link your manually created Supabase Auth user as the initial `super_admin` by inserting a row into `public.admins` (see `supabase/README.md`).
+
+Routes:
+
+- `/admin/login`
+- `/admin/dashboard`
+- `/admin/logout`
+
 ## Getting Started
 
 First, run the development server:
