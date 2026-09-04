@@ -939,8 +939,8 @@ export default function QRCodeGenerator() {
       </div>
 
       {/* Main Two-Column Layout */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 pb-16">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
           
           {/* ========================================================= */}
           {/* LEFT CONFIGURATION PANEL (7 cols)                         */}
@@ -2558,8 +2558,8 @@ export default function QRCodeGenerator() {
           {/* ========================================================= */}
           {/* RIGHT PREVIEW & DOWNLOAD CARD (5 cols, sticky on desktop)  */}
           {/* ========================================================= */}
-          <div className="lg:col-span-5">
-            <div className="lg:sticky lg:top-20 space-y-5 lg:max-h-[calc(100vh-5.5rem)] lg:overflow-y-auto lg:pr-1 lg:pb-6 [scrollbar-width:thin]">
+          <div className="lg:col-span-5 relative h-full">
+            <div className="lg:sticky lg:top-20 space-y-5 lg:max-h-[calc(100vh-5.5rem)] lg:overflow-y-auto lg:pr-1.5 lg:pb-4 [scrollbar-width:thin]">
               
               {/* CENTERPIECE PREVIEW CARD */}
               <div className="bg-white rounded-3xl p-6 sm:p-7 shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-slate-200/80 flex flex-col items-center">
