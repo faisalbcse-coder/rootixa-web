@@ -50,8 +50,8 @@ export function VisitorTracker() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const lastTrackedPath = useRef(null);
-  const heartbeatTimer = useRef(null);
 
+  // 1. Page view tracking on route mount & client SPA transitions
   useEffect(() => {
     if (!pathname) return;
 
@@ -89,25 +89,19 @@ export function VisitorTracker() {
       utmContent,
     };
 
-    // Send pageview
     try {
-      if (typeof navigator !== "undefined" && navigator.sendBeacon) {
-        const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
-        navigator.sendBeacon("/api/analytics/track", blob);
-      } else {
-        fetch("/api/analytics/track", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-          keepalive: true,
-        }).catch(() => {});
-      }
+      fetch("/api/analytics/track", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        keepalive: true,
+      }).catch(() => {});
     } catch {
       // Best-effort tracking, never break user experience
     }
   }, [pathname, searchParams]);
 
-  // Periodic heartbeat while tab is active and visible (every 30 seconds)
+  // 2. Periodic heartbeat while tab is active and visible (8s initial, then every 20s)
   useEffect(() => {
     if (!pathname || pathname.startsWith("/ceo") || pathname.startsWith("/api")) {
       return;
@@ -126,7 +120,7 @@ export function VisitorTracker() {
         visitorId,
         sessionId,
         pagePath: pathname,
-        activeDurationSeconds: 30,
+        activeDurationSeconds: 20,
       };
 
       try {
@@ -139,10 +133,14 @@ export function VisitorTracker() {
       } catch {}
     };
 
-    heartbeatTimer.current = setInterval(sendHeartbeat, 30000);
+    // Quick initial heartbeat after 8 seconds of presence
+    const initialTimer = setTimeout(sendHeartbeat, 8000);
+    // Ongoing heartbeat every 20 seconds
+    const intervalTimer = setInterval(sendHeartbeat, 20000);
 
     return () => {
-      if (heartbeatTimer.current) clearInterval(heartbeatTimer.current);
+      clearTimeout(initialTimer);
+      clearInterval(intervalTimer);
     };
   }, [pathname]);
 

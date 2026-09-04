@@ -1,7 +1,23 @@
--- Rootixa Visitor Analytics Schema
--- Provides dual-table foundation for raw page views and session aggregation
+-- ==============================================================================
+-- ROOTIXA COMPLETE ANALYTICS & TOOL USAGE SCHEMA
+-- Execute this entire script in your Supabase SQL Editor:
+-- https://supabase.com/dashboard/project/uxvyrqlzhsrizncamjuy/sql/new
+-- ==============================================================================
 
--- 1. Raw Page Views
+-- 1. Tool Usage Table
+create table if not exists public.tool_usage (
+  id uuid primary key default gen_random_uuid(),
+  tool_id text not null,
+  user_id uuid references auth.users(id) on delete set null,
+  status text not null default 'success' check (status in ('success', 'failure')),
+  duration_ms integer default 0,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists tool_usage_tool_id_idx on public.tool_usage (tool_id);
+create index if not exists tool_usage_created_at_idx on public.tool_usage (created_at desc);
+
+-- 2. Raw Page Views Table
 create table if not exists public.page_views (
   id uuid primary key default gen_random_uuid(),
   visitor_id text not null,
@@ -27,7 +43,6 @@ create table if not exists public.page_views (
   created_at timestamptz not null default now()
 );
 
--- Indexes for performance
 create index if not exists page_views_created_at_idx on public.page_views (created_at desc);
 create index if not exists page_views_visitor_id_idx on public.page_views (visitor_id);
 create index if not exists page_views_session_id_idx on public.page_views (session_id);
@@ -36,7 +51,7 @@ create index if not exists page_views_country_code_idx on public.page_views (cou
 create index if not exists page_views_traffic_source_idx on public.page_views (traffic_source);
 create index if not exists page_views_device_category_idx on public.page_views (device_category);
 
--- 2. Aggregated Visitor Sessions
+-- 3. Aggregated Visitor Sessions Table (Crucial for Live Visitors)
 create table if not exists public.visitor_sessions (
   id text primary key, -- session_id
   visitor_id text not null,
@@ -64,16 +79,24 @@ create index if not exists visitor_sessions_last_activity_idx on public.visitor_
 create index if not exists visitor_sessions_visitor_id_idx on public.visitor_sessions (visitor_id);
 create index if not exists visitor_sessions_country_idx on public.visitor_sessions (country_code);
 
--- 3. Row Level Security
+-- 4. Enable Row Level Security (RLS)
+alter table public.tool_usage enable row level security;
 alter table public.page_views enable row level security;
 alter table public.visitor_sessions enable row level security;
 
--- Read policy: only executive admins can read raw analytics data
-drop policy if exists "page_views_select_admin" on public.page_views;
-create policy "page_views_select_admin"
-on public.page_views
-for select
-to authenticated
+-- 5. Policies: Service Role (full write/read access)
+drop policy if exists "service_role_all_tool_usage" on public.tool_usage;
+create policy "service_role_all_tool_usage" on public.tool_usage for all to service_role using (true) with check (true);
+
+drop policy if exists "service_role_all_page_views" on public.page_views;
+create policy "service_role_all_page_views" on public.page_views for all to service_role using (true) with check (true);
+
+drop policy if exists "service_role_all_visitor_sessions" on public.visitor_sessions;
+create policy "service_role_all_visitor_sessions" on public.visitor_sessions for all to service_role using (true) with check (true);
+
+-- 6. Read Policies: Authenticated active admins can read all analytics
+drop policy if exists "admins_select_tool_usage" on public.tool_usage;
+create policy "admins_select_tool_usage" on public.tool_usage for select to authenticated
 using (
   exists (
     select 1 from public.admins a
@@ -81,11 +104,17 @@ using (
   )
 );
 
-drop policy if exists "visitor_sessions_select_admin" on public.visitor_sessions;
-create policy "visitor_sessions_select_admin"
-on public.visitor_sessions
-for select
-to authenticated
+drop policy if exists "admins_select_page_views" on public.page_views;
+create policy "admins_select_page_views" on public.page_views for select to authenticated
+using (
+  exists (
+    select 1 from public.admins a
+    where a.auth_user_id = auth.uid() and a.status = 'active'
+  )
+);
+
+drop policy if exists "admins_select_visitor_sessions" on public.visitor_sessions;
+create policy "admins_select_visitor_sessions" on public.visitor_sessions for select to authenticated
 using (
   exists (
     select 1 from public.admins a

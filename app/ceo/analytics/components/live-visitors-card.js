@@ -1,3 +1,6 @@
+"use client";
+
+import { useState, useEffect } from "react";
 import { Radio, Smartphone, Monitor, Tablet, Globe, HelpCircle } from "lucide-react";
 
 function getDeviceIcon(category) {
@@ -6,8 +9,35 @@ function getDeviceIcon(category) {
   return <Monitor className="h-3.5 w-3.5 text-slate-500" />;
 }
 
-export function LiveVisitorsCard({ liveVisitors }) {
-  const { count = 0, list = [] } = liveVisitors || {};
+export function LiveVisitorsCard({ initialLiveVisitors }) {
+  const [liveData, setLiveData] = useState(initialLiveVisitors || { count: 0, list: [] });
+
+  // Real-time polling every 4 seconds
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchLive = async () => {
+      try {
+        const res = await fetch("/api/analytics/live", { cache: "no-store" });
+        if (res.ok) {
+          const json = await res.json();
+          if (isMounted && json && typeof json.count === "number") {
+            setLiveData(json);
+          }
+        }
+      } catch {
+        // Best effort polling
+      }
+    };
+
+    const interval = setInterval(fetchLive, 4000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const { count = 0, list = [] } = liveData;
 
   return (
     <div className="rounded-2xl border border-slate-200/80 bg-white shadow-xs p-6 flex flex-col justify-between">
@@ -24,7 +54,7 @@ export function LiveVisitorsCard({ liveVisitors }) {
               </h3>
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-bold text-emerald-700 border border-emerald-200/60">
                 <Radio className="h-3 w-3 text-emerald-600 animate-pulse" />
-                Live Pulse
+                Live Auto-Sync
               </span>
             </div>
           </div>
@@ -86,7 +116,7 @@ export function LiveVisitorsCard({ liveVisitors }) {
       </div>
 
       <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-        <span>5-minute rolling activity window</span>
+        <span>Updates every 4s via auto-pulse</span>
         <span>Anonymized telemetry</span>
       </div>
     </div>

@@ -94,7 +94,7 @@ export default async function CeoAnalyticsPage({ searchParams }) {
 
           {/* 2. Real-Time Live Visitors */}
           <section aria-label="Real Time Online Visitors">
-            <LiveVisitorsCard liveVisitors={data.visitors.liveVisitors} />
+            <LiveVisitorsCard initialLiveVisitors={data.visitors.liveVisitors} />
           </section>
 
           {/* 3. Pages Analytics Table */}
