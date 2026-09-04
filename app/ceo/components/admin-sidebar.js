@@ -39,10 +39,10 @@ export function AdminSidebar({ isOpen, onClose, adminProfile }) {
     },
     {
       name: "Tools",
-      href: "#",
+      href: "/ceo/tools",
       icon: Wrench,
-      active: false,
-      available: false,
+      active: pathname === "/ceo/tools",
+      available: true,
     },
     {
       name: "Analytics",

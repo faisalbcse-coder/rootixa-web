@@ -1,0 +1,29 @@
+{
+  "tools": {
+    "qr-code": {
+      "status": "live",
+      "maintenanceNotice": ""
+    },
+    "cv-builder": {
+      "status": "development",
+      "maintenanceNotice": ""
+    },
+    "image-resizer": {
+      "status": "development",
+      "maintenanceNotice": ""
+    },
+    "bg-remover": {
+      "status": "development",
+      "maintenanceNotice": ""
+    },
+    "pdf-converter": {
+      "status": "development",
+      "maintenanceNotice": ""
+    },
+    "invoice-generator": {
+      "status": "development",
+      "maintenanceNotice": ""
+    }
+  },
+  "updatedAt": "2026-09-04T13:21:25.935Z"
+}
