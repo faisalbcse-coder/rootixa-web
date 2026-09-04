@@ -28,6 +28,7 @@ import {
   PRESET_CATEGORIES,
   detectMatchingPreset
 } from '@/lib/qr/design-safety';
+import { generateQrPdf, compositeQrWithText } from '@/lib/qr/pdf-export';
 
 const PREVIEW_SIZE = 300;
 const POSTER_PRESETS = {
@@ -222,6 +223,15 @@ export default function QRCodeGenerator() {
     exportSize: 2048,
   });
 
+  // Optional Header & Footer Text State
+  const [textSettings, setTextSettings] = useState({
+    showHeader: false,
+    headerText: '',
+    showFooter: false,
+    footerText: '',
+    pdfPaperSize: 'A4', // 'A4', 'A5', 'Letter', 'Fit'
+  });
+
   const [logoFileName, setLogoFileName] = useState('');
 
   // Lead Generation & Tracking State
@@ -406,6 +416,13 @@ export default function QRCodeGenerator() {
       logo: null
     }));
     setLogoFileName('');
+    setTextSettings({
+      showHeader: false,
+      headerText: '',
+      showFooter: false,
+      footerText: '',
+      pdfPaperSize: 'A4',
+    });
   };
 
   const handleLogoUpload = (e) => {
@@ -464,7 +481,60 @@ export default function QRCodeGenerator() {
     if (!qrCodeInstance.current) return;
     setIsExporting(true);
     try {
-      await withExportResolution((qrCode) => qrCode.download({ name: `Rootixa-QR-${activeTab}`, extension: qrSettings.format }));
+      if (qrSettings.format === 'pdf') {
+        const imageBlob = await withExportResolution((qrCode) => qrCode.getRawData('png'));
+        const dataUrl = await blobToDataUrl(imageBlob);
+        const pdfBlob = await generateQrPdf({
+          qrDataUrl: dataUrl,
+          paperSize: textSettings.pdfPaperSize,
+          showHeader: textSettings.showHeader,
+          headerText: textSettings.headerText,
+          showFooter: textSettings.showFooter,
+          footerText: textSettings.footerText,
+        });
+        const url = URL.createObjectURL(pdfBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Rootixa-QR-${activeTab}-${textSettings.pdfPaperSize}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      } else if (
+        (textSettings.showHeader && textSettings.headerText) ||
+        (textSettings.showFooter && textSettings.footerText)
+      ) {
+        // Composite header & footer onto high-res canvas for PNG / JPG / WEBP
+        const rawBlob = await withExportResolution((qrCode) => qrCode.getRawData(qrSettings.format === 'jpeg' ? 'jpeg' : 'png'));
+        const tempImg = new Image();
+        tempImg.src = await blobToDataUrl(rawBlob);
+        await new Promise((resolve) => { tempImg.onload = resolve; });
+        const canvas = compositeQrWithText({
+          qrCanvas: tempImg,
+          showHeader: textSettings.showHeader,
+          headerText: textSettings.headerText,
+          showFooter: textSettings.showFooter,
+          footerText: textSettings.footerText,
+          bgColor: qrSettings.bgColor,
+          isTransparentBg: qrSettings.isTransparentBg,
+        });
+        const mimeType = qrSettings.format === 'jpeg' ? 'image/jpeg' : qrSettings.format === 'webp' ? 'image/webp' : 'image/png';
+        const fileExt = qrSettings.format === 'jpeg' ? 'jpg' : qrSettings.format;
+        canvas.toBlob((blob) => {
+          if (!blob) return;
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = `Rootixa-QR-${activeTab}.${fileExt}`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(url);
+        }, mimeType, 0.95);
+      } else {
+        await withExportResolution((qrCode) => qrCode.download({ name: `Rootixa-QR-${activeTab}`, extension: qrSettings.format }));
+      }
+
       try {
         fetch("/api/tools/track", {
           method: "POST",
@@ -1664,6 +1734,7 @@ export default function QRCodeGenerator() {
                   { id: 'pattern', label: 'Pattern & Eyes', icon: Grid },
                   { id: 'colors', label: 'Colors & Fill', icon: Palette },
                   { id: 'branding', label: 'Brand Logo', icon: ImagePlus },
+                  { id: 'text', label: 'Header & Footer', icon: Type },
                   { id: 'spacing', label: 'Margin & Safety', icon: Sliders },
                 ].map(sub => {
                   const Icon = sub.icon;
@@ -2341,6 +2412,128 @@ export default function QRCodeGenerator() {
                   </div>
                 </div>
               )}
+
+              {/* SUBSECTION: HEADER & FOOTER TEXT */}
+              {customizeTab === 'text' && (
+                <div className="space-y-6 animate-in fade-in duration-200">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                      Header & Footer Text
+                    </label>
+                    <p className="text-[11px] text-slate-400">
+                      Optionally print a bold title above and subtitle note below your QR code. Perfect for flyers, table signs, cards, and PDF sheets.
+                    </p>
+                  </div>
+
+                  {/* Header (Title Above QR) */}
+                  <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-extrabold text-slate-800 flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={textSettings.showHeader}
+                          onChange={(e) => setTextSettings(prev => ({ ...prev, showHeader: e.target.checked }))}
+                          className="w-4 h-4 rounded text-indigo-600 cursor-pointer"
+                        />
+                        <span>Enable Header (Title Above QR)</span>
+                      </label>
+                      {textSettings.showHeader && (
+                        <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                          Active in Preview & Downloads
+                        </span>
+                      )}
+                    </div>
+
+                    {textSettings.showHeader && (
+                      <div className="space-y-2.5 pt-1">
+                        <input
+                          type="text"
+                          value={textSettings.headerText}
+                          onChange={(e) => setTextSettings(prev => ({ ...prev, headerText: e.target.value }))}
+                          placeholder="e.g. Scan to Visit Our Website"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-indigo-600"
+                        />
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[10px] text-slate-400 font-semibold mr-1">Suggestions:</span>
+                          {[
+                            'Scan to Visit',
+                            'Free Guest Wi-Fi',
+                            'Scan for Menu',
+                            'Connect With Me',
+                            'Follow Us',
+                            'Pay Here',
+                          ].map(sug => (
+                            <button
+                              key={sug}
+                              type="button"
+                              onClick={() => setTextSettings(prev => ({ ...prev, headerText: sug }))}
+                              className="text-[10px] font-semibold bg-white hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 border border-slate-200 hover:border-indigo-200 rounded-lg px-2 py-1 transition cursor-pointer"
+                            >
+                              {sug}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Footer (Subtitle Below QR) */}
+                  <div className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-extrabold text-slate-800 flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={textSettings.showFooter}
+                          onChange={(e) => setTextSettings(prev => ({ ...prev, showFooter: e.target.checked }))}
+                          className="w-4 h-4 rounded text-indigo-600 cursor-pointer"
+                        />
+                        <span>Enable Footer (Subtitle / Description Below QR)</span>
+                      </label>
+                      {textSettings.showFooter && (
+                        <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-200">
+                          Active in Preview & Downloads
+                        </span>
+                      )}
+                    </div>
+
+                    {textSettings.showFooter && (
+                      <div className="space-y-2.5 pt-1">
+                        <input
+                          type="text"
+                          value={textSettings.footerText}
+                          onChange={(e) => setTextSettings(prev => ({ ...prev, footerText: e.target.value }))}
+                          placeholder="e.g. Point your smartphone camera to connect"
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-indigo-600"
+                        />
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[10px] text-slate-400 font-semibold mr-1">Suggestions:</span>
+                          {[
+                            'Point camera to scan',
+                            'Touchless & instant',
+                            'Available on iOS & Android',
+                            'No app required',
+                          ].map(sug => (
+                            <button
+                              key={sug}
+                              type="button"
+                              onClick={() => setTextSettings(prev => ({ ...prev, footerText: sug }))}
+                              className="text-[10px] font-semibold bg-white hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 border border-slate-200 hover:border-indigo-200 rounded-lg px-2 py-1 transition cursor-pointer"
+                            >
+                              {sug}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Information Note */}
+                  <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-100 flex items-center gap-2 text-xs text-indigo-800">
+                    <Info className="w-4 h-4 shrink-0 text-indigo-600" />
+                    <span>Header & Footer are completely optional. When enabled, they render directly in the live preview and are included in PDF and image downloads.</span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* AD SPACE (Clean Non-Intrusive Bottom Banner) */}
@@ -2384,12 +2577,32 @@ export default function QRCodeGenerator() {
 
                 {/* QR Canvas Centerpiece Surface */}
                 <div 
-                  className={`p-4 rounded-2xl mb-4 border border-slate-200/90 flex justify-center items-center transition-colors duration-300 shadow-sm max-w-full overflow-hidden ${
+                  className={`p-4 rounded-2xl mb-4 border border-slate-200/90 flex flex-col justify-center items-center transition-colors duration-300 shadow-sm max-w-full overflow-hidden ${
                     qrSettings.isTransparentBg ? 'bg-[radial-gradient(#cbd5e1_1px,transparent_1px)] [background-size:12px_12px] bg-slate-50' : ''
                   }`}
                   style={!qrSettings.isTransparentBg ? { backgroundColor: qrSettings.bgColor } : undefined}
                 >
+                  {/* Optional Header Text on Preview */}
+                  {textSettings.showHeader && textSettings.headerText && (
+                    <p 
+                      className="font-extrabold text-sm mb-2.5 text-center max-w-[280px] break-words transition-all"
+                      style={{ color: qrSettings.bgColor === '#0B0F17' ? '#FFFFFF' : '#0F172A' }}
+                    >
+                      {textSettings.headerText}
+                    </p>
+                  )}
+
                   <div ref={qrRef} className="rounded-xl overflow-hidden [&>canvas]:max-w-full [&>canvas]:h-auto flex justify-center items-center" />
+
+                  {/* Optional Footer Text on Preview */}
+                  {textSettings.showFooter && textSettings.footerText && (
+                    <p 
+                      className="font-medium text-xs mt-2.5 text-center max-w-[280px] break-words transition-all"
+                      style={{ color: qrSettings.bgColor === '#0B0F17' ? '#94A3B8' : '#64748B' }}
+                    >
+                      {textSettings.footerText}
+                    </p>
+                  )}
                 </div>
 
                 {/* Live Scan Safety Status Feedback Box */}
@@ -2421,12 +2634,13 @@ export default function QRCodeGenerator() {
                         <span className="text-[10px] text-amber-600 font-bold">White BG used for JPG</span>
                       )}
                     </div>
-                    <div className="grid grid-cols-4 gap-1.5 p-1 bg-slate-100 rounded-xl">
+                    <div className="grid grid-cols-5 gap-1.5 p-1 bg-slate-100 rounded-xl">
                       {[
                         { id: 'png', label: 'PNG' },
                         { id: 'jpeg', label: 'JPG' },
                         { id: 'webp', label: 'WEBP' },
-                        { id: 'svg', label: 'SVG' }
+                        { id: 'svg', label: 'SVG' },
+                        { id: 'pdf', label: 'PDF' }
                       ].map(fmt => (
                         <button
                           key={fmt.id}
@@ -2444,22 +2658,41 @@ export default function QRCodeGenerator() {
                     </div>
                   </div>
 
-                  {/* Resolution Selector */}
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-bold text-slate-800">Resolution</p>
-                      <p className="text-[10px] text-slate-500">Pixel dimension of downloaded raster file</p>
+                  {/* Resolution Selector or PDF Page Size */}
+                  {qrSettings.format === 'pdf' ? (
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">PDF Page Size</p>
+                        <p className="text-[10px] text-slate-500">Printable sheet dimensions</p>
+                      </div>
+                      <select 
+                        value={textSettings.pdfPaperSize} 
+                        onChange={e => setTextSettings(prev => ({ ...prev, pdfPaperSize: e.target.value }))} 
+                        className="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 outline-none cursor-pointer"
+                      >
+                        <option value="A4">A4 · 210 × 297 mm</option>
+                        <option value="A5">A5 · 148 × 210 mm</option>
+                        <option value="Letter">Letter · 216 × 279 mm</option>
+                        <option value="Fit">Fit to QR · Single Card</option>
+                      </select>
                     </div>
-                    <select 
-                      value={qrSettings.exportSize} 
-                      onChange={e => handleSettingChange('exportSize', Number(e.target.value))} 
-                      className="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 outline-none cursor-pointer"
-                    >
-                      <option value={1024}>Standard · 1024px</option>
-                      <option value={2048}>High · 2048px</option>
-                      <option value={4096}>Maximum · 4096px</option>
-                    </select>
-                  </div>
+                  ) : (
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">Resolution</p>
+                        <p className="text-[10px] text-slate-500">Pixel dimension of downloaded raster file</p>
+                      </div>
+                      <select 
+                        value={qrSettings.exportSize} 
+                        onChange={e => handleSettingChange('exportSize', Number(e.target.value))} 
+                        className="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 outline-none cursor-pointer"
+                      >
+                        <option value={1024}>Standard · 1024px</option>
+                        <option value={2048}>High · 2048px</option>
+                        <option value={4096}>Maximum · 4096px</option>
+                      </select>
+                    </div>
+                  )}
 
                   {/* Optional WiFi Signage Button */}
                   {activeTab === 'wifi' && (
@@ -2491,7 +2724,7 @@ export default function QRCodeGenerator() {
 
                   {/* Download Limit & Status */}
                   <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
-                    <span>{qrSettings.format === 'svg' ? 'Vector SVG (infinite scale)' : `${qrSettings.exportSize} × ${qrSettings.exportSize}px`}</span>
+                    <span>{qrSettings.format === 'pdf' ? `Vector PDF (${textSettings.pdfPaperSize})` : qrSettings.format === 'svg' ? 'Vector SVG (infinite scale)' : `${qrSettings.exportSize} × ${qrSettings.exportSize}px`}</span>
                     <span className="font-semibold text-slate-600">
                       Downloads: {isSubscribed ? <span className="text-emerald-600 font-bold">Unlimited</span> : `${downloadCount}/2 free`}
                     </span>
