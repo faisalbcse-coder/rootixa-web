@@ -30,8 +30,8 @@ const POSTER_PRESETS = {
 
 // 12 Supported QR Content Types Definition
 const QR_TYPES = [
-  { id: 'url', name: 'Website URL', category: 'links', icon: LinkIcon, helper: 'Scan to open website in browser.' },
   { id: 'text', name: 'Plain Text', category: 'info', icon: Type, helper: 'Scan to view raw text or notes.' },
+  { id: 'url', name: 'Website URL', category: 'links', icon: LinkIcon, helper: 'Scan to open website in browser.' },
   { id: 'wifi', name: 'Wi-Fi Network', category: 'info', icon: Wifi, helper: 'Scan to automatically connect to Wi-Fi.' },
   { id: 'email', name: 'Email Message', category: 'communication', icon: Mail, helper: 'Scan to draft an email message.' },
   { id: 'phone', name: 'Phone Call', category: 'communication', icon: Phone, helper: 'Scan to call this phone number.' },
@@ -89,15 +89,15 @@ function isValidHex(hex) {
 }
 
 export default function QRCodeGenerator() {
-  const [activeTab, setActiveTab] = useState('url');
+  const [activeTab, setActiveTab] = useState('text');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [customizeTab, setCustomizeTab] = useState('pattern');
   
   // Comprehensive QR Data State for all 12 types
   const [qrData, setQrData] = useState({
     // Existing types
+    text: 'Hello from Rootixa!',
     url: 'https://rootixa.com', 
-    text: '', 
     wifiSsid: '', 
     wifiPassword: '', 
     wifiEncryption: 'WPA', 
@@ -232,7 +232,7 @@ export default function QRCodeGenerator() {
         width: PREVIEW_SIZE, 
         height: PREVIEW_SIZE, 
         margin: 12,
-        data: 'https://rootixa.com',
+        data: 'Hello from Rootixa!',
         dotsOptions: { color: '#4F46E5', type: 'square' },
         backgroundOptions: { color: '#FFFFFF' },
         cornersSquareOptions: { type: 'square', color: '#4F46E5' },
@@ -753,7 +753,32 @@ export default function QRCodeGenerator() {
               {/* DYNAMIC CONTENT INPUT FIELDS (12 Types) */}
               <div className="space-y-4 pt-4 border-t border-slate-100">
 
-                {/* 1. Website URL */}
+                {/* 1. Plain Text */}
+                {activeTab === 'text' && (
+                  <div className="space-y-1.5 animate-in fade-in duration-150">
+                    <div className="flex justify-between items-center">
+                      <label htmlFor="qr-text-input" className="block text-xs font-bold text-slate-700">
+                        Raw Text Content <span className="text-rose-500">*</span>
+                      </label>
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        {qrData.text.length} characters
+                      </span>
+                    </div>
+                    <textarea 
+                      id="qr-text-input"
+                      value={qrData.text} 
+                      onChange={e => handleDataChange('text', e.target.value)} 
+                      rows={4} 
+                      className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:bg-white resize-none transition" 
+                      placeholder="Enter plain text, notes, serial numbers, or a message..." 
+                    />
+                    <p className="text-[11px] text-slate-400">
+                      Scanners will immediately display this raw text upon scanning.
+                    </p>
+                  </div>
+                )}
+
+                {/* 2. Website URL */}
                 {activeTab === 'url' && (
                   <div className="space-y-1.5 animate-in fade-in duration-150">
                     <label htmlFor="qr-url-input" className="block text-xs font-bold text-slate-700">
@@ -778,31 +803,6 @@ export default function QRCodeGenerator() {
                     )}
                     <p className="text-[11px] text-slate-400">
                       Scanners will automatically open this link in their default browser.
-                    </p>
-                  </div>
-                )}
-
-                {/* 2. Plain Text */}
-                {activeTab === 'text' && (
-                  <div className="space-y-1.5 animate-in fade-in duration-150">
-                    <div className="flex justify-between items-center">
-                      <label htmlFor="qr-text-input" className="block text-xs font-bold text-slate-700">
-                        Raw Text Content <span className="text-rose-500">*</span>
-                      </label>
-                      <span className="text-[11px] text-slate-400 font-mono">
-                        {qrData.text.length} characters
-                      </span>
-                    </div>
-                    <textarea 
-                      id="qr-text-input"
-                      value={qrData.text} 
-                      onChange={e => handleDataChange('text', e.target.value)} 
-                      rows={4} 
-                      className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:bg-white resize-none transition" 
-                      placeholder="Enter plain text, notes, serial numbers, or a message..." 
-                    />
-                    <p className="text-[11px] text-slate-400">
-                      Scanners will immediately display this raw text upon scanning.
                     </p>
                   </div>
                 )}
