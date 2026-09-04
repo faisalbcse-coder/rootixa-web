@@ -21,30 +21,39 @@ export type AdminProfile = {
 
 export async function getAuthUser() {
   noStore();
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.getUser();
-  if (error || !data.user) return null;
-  return data.user;
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.auth.getUser();
+    if (error || !data.user) return null;
+    return data.user;
+  } catch (err) {
+    console.warn("Could not authenticate user (Supabase may be unconfigured):", err);
+    return null;
+  }
 }
 
 export async function getAdminContext() {
   noStore();
-  const user = await getAuthUser();
+  try {
+    const user = await getAuthUser();
+    if (!user) return null;
 
-  if (!user) return null;
+    // Use the server-only service role for admin authorization lookup to avoid RLS/JWT timing pitfalls.
+    const service = createServiceClient();
+    const { data: admin, error: adminError } = await service
+      .from("admins")
+      .select("id, auth_user_id, full_name, email, role, status, created_at, updated_at, created_by")
+      .eq("auth_user_id", user.id)
+      .maybeSingle();
 
-  // Use the server-only service role for admin authorization lookup to avoid RLS/JWT timing pitfalls.
-  const service = createServiceClient();
-  const { data: admin, error: adminError } = await service
-    .from("admins")
-    .select("id, auth_user_id, full_name, email, role, status, created_at, updated_at, created_by")
-    .eq("auth_user_id", user.id)
-    .maybeSingle();
+    if (adminError || !admin) return null;
+    if (admin.status !== "active") return null;
 
-  if (adminError || !admin) return null;
-  if (admin.status !== "active") return null;
-
-  return { user, admin: admin as AdminProfile };
+    return { user, admin: admin as AdminProfile };
+  } catch (err) {
+    console.warn("Could not retrieve admin context (Supabase may be unconfigured):", err);
+    return null;
+  }
 }
 
 export function isSuperAdmin(context: Awaited<ReturnType<typeof getAdminContext>>): boolean {
