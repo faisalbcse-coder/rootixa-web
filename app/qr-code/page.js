@@ -2,56 +2,97 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { 
-  Link as LinkIcon, Type, Wifi, Mail, Download, Palette, CheckCircle, LayoutGrid, 
-  ArrowLeft, ImagePlus, Trash2, X, Send, Sliders, ChevronDown, Settings, 
-  Zap, FileImage, Grid, Printer
+  Link as LinkIcon, Type, Wifi, Mail, Download, CheckCircle, 
+  ArrowLeft, ImagePlus, Trash2, X, Send, Sliders, ChevronDown, 
+  Settings, Zap, FileImage, Grid, Printer, AlertTriangle, ShieldCheck,
+  Eye, RefreshCw, Sparkles, Check, Info
 } from 'lucide-react';
 
-const PREVIEW_SIZE = 320;
+const PREVIEW_SIZE = 300;
 const POSTER_PRESETS = {
   A4: { label: 'A4 · 210 × 297 mm', width: 210, height: 297 },
   B4: { label: 'B4 · 250 × 353 mm', width: 250, height: 353 },
   Letter: { label: 'Letter · 216 × 279 mm', width: 216, height: 279 },
 };
 
-// === Advertisement Placeholder Component ===
-const AdSpace = ({ className, text = "Advertisement Space" }) => (
-  <div className={`bg-gray-50 border-2 border-dashed border-gray-200 rounded-2xl flex items-center justify-center text-gray-400 font-bold text-sm tracking-widest uppercase shadow-inner overflow-hidden relative group ${className}`}>
-    <div className="absolute inset-0 bg-gradient-to-tr from-gray-50 to-gray-100 opacity-50"></div>
+// Advertisement Placeholder Component
+const AdSpace = ({ className = "", text = "Advertisement Space" }) => (
+  <div className={`bg-slate-50/80 border border-dashed border-slate-200 rounded-2xl flex items-center justify-center text-slate-400 font-semibold text-xs tracking-wider uppercase overflow-hidden relative group ${className}`}>
     <span className="relative z-10 text-center px-4">{text}</span>
   </div>
 );
 
-// Accordion Component
-const Accordion = ({ id, title, icon, isOpen, onToggle, children }) => (
-  <div className="border border-gray-100 rounded-2xl mb-4 bg-white shadow-sm transition-all overflow-hidden">
-    <button onClick={() => onToggle(isOpen ? '' : id)} className="w-full flex items-center justify-between p-5 hover:bg-gray-50 transition-colors">
-      <div className="flex items-center gap-3 font-bold text-gray-800">{icon} {title}</div>
-      <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`} />
-    </button>
-    <div className={`transition-all duration-300 ease-in-out ${isOpen ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'}`}>
-      <div className="p-5 border-t border-gray-100">{children}</div>
-    </div>
-  </div>
-);
+// Contrast Calculation Helpers for Scan Reliability
+function getLuminance(hex) {
+  const cleanHex = hex.replace('#', '');
+  if (cleanHex.length !== 6) return 0.5;
+  const r = parseInt(cleanHex.substring(0, 2), 16) / 255;
+  const g = parseInt(cleanHex.substring(2, 4), 16) / 255;
+  const b = parseInt(cleanHex.substring(4, 6), 16) / 255;
+  const a = [r, g, b].map((v) => {
+    return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
+  });
+  return a[0] * 0.2126 + a[1] * 0.7152 + a[2] * 0.0722;
+}
+
+function getContrastRatio(fgHex, bgHex) {
+  try {
+    if (!fgHex || !bgHex || fgHex.length < 6 || bgHex.length < 6) return 21;
+    const lum1 = getLuminance(fgHex);
+    const lum2 = getLuminance(bgHex);
+    const brightest = Math.max(lum1, lum2);
+    const darkest = Math.min(lum1, lum2);
+    return (brightest + 0.05) / (darkest + 0.05);
+  } catch {
+    return 21;
+  }
+}
+
+function isValidHex(hex) {
+  return /^#([0-9A-F]{3}){1,2}$/i.test(hex);
+}
+
+function isValidUrl(string) {
+  if (!string || string.trim() === '') return true;
+  try {
+    const testStr = string.startsWith('http://') || string.startsWith('https://') ? string : `https://${string}`;
+    const url = new URL(testStr);
+    return Boolean(url.hostname.includes('.'));
+  } catch {
+    return false;
+  }
+}
+
+function isValidEmail(email) {
+  if (!email || email.trim() === '') return true;
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
 
 export default function QRCodeGenerator() {
-  const [isAdvanced, setIsAdvanced] = useState(false);
   const [activeTab, setActiveTab] = useState('url');
+  const [customizeTab, setCustomizeTab] = useState('pattern');
   
   // Data State
   const [qrData, setQrData] = useState({
     url: 'https://rootixa.com', 
     text: '', 
-    wifiSsid: '', wifiPassword: '', wifiEncryption: 'WPA', wifiTitle: 'FREE WiFi', wifiSubtitle: 'Scan the code to connect instantly',
-    email: '' 
+    wifiSsid: '', 
+    wifiPassword: '', 
+    wifiEncryption: 'WPA', 
+    wifiTitle: 'FREE WiFi', 
+    wifiSubtitle: 'Scan the code to connect instantly',
+    email: '',
+    emailSubject: '',
+    emailBody: '',
   });
 
   const [qrSettings, setQrSettings] = useState({
-    fgColor: '#4F46E5', bgColor: '#FFFFFF',
-    logo: null, logoSize: 0.4, 
+    fgColor: '#4F46E5', 
+    bgColor: '#FFFFFF',
+    logo: null, 
+    logoSize: 0.35, 
     format: 'png',
     exportSize: 2048,
     dotStyle: 'square', 
@@ -60,28 +101,55 @@ export default function QRCodeGenerator() {
     errorCorrection: 'H',
   });
 
-  // Lead Generation & Tracking
+  const [logoFileName, setLogoFileName] = useState('');
+
+  // Lead Generation & Tracking State
   const [downloadCount, setDownloadCount] = useState(0);
   const [showModal, setShowModal] = useState(false);
   const [userEmail, setUserEmail] = useState('');
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isDownloaded, setIsDownloaded] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+
+  // WiFi Poster State
   const [posterPreview, setPosterPreview] = useState(null);
   const [posterSettings, setPosterSettings] = useState({ paper: 'A4', width: 210, height: 297 });
   const [isPosterPreparing, setIsPosterPreparing] = useState(false);
   const [posterError, setPosterError] = useState('');
   
-  const [openAccordion, setOpenAccordion] = useState('design'); 
-  
   const qrRef = useRef(null);
   const qrCodeInstance = useRef(null);
 
+  // Color Contrast Analysis
+  const contrastRatio = useMemo(() => {
+    return getContrastRatio(qrSettings.fgColor, qrSettings.bgColor);
+  }, [qrSettings.fgColor, qrSettings.bgColor]);
+
+  const isLowContrast = contrastRatio < 3.0;
+
+  // Validation States
+  const isUrlInvalid = activeTab === 'url' && !isValidUrl(qrData.url);
+  const isEmailInvalid = activeTab === 'email' && !isValidEmail(qrData.email);
+
   const getFinalQRValue = useCallback(() => {
-    if (activeTab === 'wifi') return `WIFI:T:${qrData.wifiEncryption};S:${qrData.wifiSsid};P:${qrData.wifiPassword};;`;
-    if (activeTab === 'email') return `mailto:${qrData.email}`;
+    if (activeTab === 'wifi') {
+      return `WIFI:T:${qrData.wifiEncryption};S:${qrData.wifiSsid};P:${qrData.wifiPassword};;`;
+    }
+    if (activeTab === 'email') {
+      let mailto = `mailto:${qrData.email || ''}`;
+      const params = [];
+      if (qrData.emailSubject) params.push(`subject=${encodeURIComponent(qrData.emailSubject)}`);
+      if (qrData.emailBody) params.push(`body=${encodeURIComponent(qrData.emailBody)}`);
+      if (params.length > 0) mailto += `?${params.join('&')}`;
+      return mailto;
+    }
     if (activeTab === 'text') return qrData.text || ' ';
-    return qrData.url || 'https://rootixa.com';
+    
+    let url = qrData.url || 'https://rootixa.com';
+    if (url.trim() !== '' && !url.startsWith('http://') && !url.startsWith('https://')) {
+      url = `https://${url}`;
+    }
+    return url;
   }, [activeTab, qrData]);
 
   const updateQRCode = useCallback(() => {
@@ -103,14 +171,16 @@ export default function QRCodeGenerator() {
     import('qr-code-styling').then(({ default: QRCodeStyling }) => {
       if (!isActive) return;
       qrCodeInstance.current = new QRCodeStyling({
-        width: PREVIEW_SIZE, height: PREVIEW_SIZE, margin: 12,
+        width: PREVIEW_SIZE, 
+        height: PREVIEW_SIZE, 
+        margin: 12,
         data: 'https://rootixa.com',
         dotsOptions: { color: '#4F46E5', type: 'square' },
         backgroundOptions: { color: '#FFFFFF' },
         cornersSquareOptions: { type: 'square', color: '#4F46E5' },
         cornersDotOptions: { type: 'square', color: '#4F46E5' },
         qrOptions: { errorCorrectionLevel: 'H' },
-        imageOptions: { hideBackgroundDots: true, imageSize: 0.4, margin: 8 }
+        imageOptions: { hideBackgroundDots: true, imageSize: 0.35, margin: 8 }
       });
       if (qrRef.current) qrCodeInstance.current.append(qrRef.current);
     });
@@ -132,12 +202,21 @@ export default function QRCodeGenerator() {
   const handleSettingChange = (field, value) => setQrSettings(prev => ({ ...prev, [field]: value }));
 
   const handleLogoUpload = (e) => {
-    const file = e.target.files[0];
+    const file = e.target.files?.[0];
     if (file) {
+      setLogoFileName(file.name);
       const reader = new FileReader();
-      reader.onload = (event) => handleSettingChange('logo', event.target.result);
+      reader.onload = (event) => {
+        handleSettingChange('logo', event.target.result);
+        handleSettingChange('errorCorrection', 'H'); // Best practice when logo is added
+      };
       reader.readAsDataURL(file);
     }
+  };
+
+  const handleRemoveLogo = () => {
+    handleSettingChange('logo', null);
+    setLogoFileName('');
   };
 
   const initiateDownload = () => {
@@ -148,7 +227,6 @@ export default function QRCodeGenerator() {
 
   const withExportResolution = async (callback) => {
     if (!qrCodeInstance.current) return null;
-
     qrCodeInstance.current.update({ width: qrSettings.exportSize, height: qrSettings.exportSize, margin: 48 });
     try {
       return await callback(qrCodeInstance.current);
@@ -162,7 +240,6 @@ export default function QRCodeGenerator() {
     setIsExporting(true);
     try {
       await withExportResolution((qrCode) => qrCode.download({ name: "Rootixa-QR", extension: qrSettings.format }));
-      // Non-blocking platform usage tracking
       try {
         fetch("/api/tools/track", {
           method: "POST",
@@ -308,8 +385,8 @@ export default function QRCodeGenerator() {
       link.click();
       link.remove();
       URL.revokeObjectURL(objectUrl);
-    } catch (error) {
-      setPosterError('Download তৈরি করা যায়নি। আবার চেষ্টা করুন।');
+    } catch {
+      setPosterError('Could not prepare poster download. Please try again.');
     } finally {
       setIsPosterPreparing(false);
     }
@@ -328,46 +405,125 @@ export default function QRCodeGenerator() {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-[#F8FAFC] font-sans text-gray-800 pb-20">
+  const dotPatternOptions = [
+    { id: 'square', label: 'Classic Square', desc: 'Standard crisp blocks' },
+    { id: 'dots', label: 'Rounded Dots', desc: 'Modern circular elements' },
+    { id: 'rounded', label: 'Soft Rounded', desc: 'Curved module corners' },
+    { id: 'classy', label: 'Classy Style', desc: 'Subtle diamond cut' },
+    { id: 'classy-rounded', label: 'Classy Rounded', desc: 'Refined smooth contours' },
+    { id: 'extra-rounded', label: 'Extra Rounded', desc: 'Pill-shaped aesthetic' },
+  ];
 
+  const eyeFrameOptions = [
+    { id: 'square', label: 'Sharp Square', desc: 'Standard square finder frame' },
+    { id: 'extra-rounded', label: 'Smooth Rounded', desc: 'Curved modern corners' },
+    { id: 'dot', label: 'Circular Ring', desc: 'Round concentric circles' },
+  ];
+
+  const errorCorrectionOptions = [
+    { id: 'L', label: 'Low (7%)', desc: 'Best for simple data & maximum scan density' },
+    { id: 'M', label: 'Medium (15%)', desc: 'Recommended standard for most everyday codes' },
+    { id: 'Q', label: 'Quartile (25%)', desc: 'High resilience against scratches and damage' },
+    { id: 'H', label: 'High (30%)', desc: 'Strongest recovery · Required when embedding logos' },
+  ];
+
+  return (
+    <div className="min-h-screen bg-[#F8FAFC] font-sans text-slate-800 pb-20">
+
+      {/* WiFi Poster Modal */}
       {posterPreview && (
         <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 p-4 backdrop-blur-sm">
           <div className="mx-auto my-4 w-full max-w-5xl rounded-3xl bg-white p-5 shadow-2xl md:p-7">
-            <div className="mb-5 flex items-start justify-between gap-4">
+            <div className="mb-5 flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
               <div>
-                <p className="text-xs font-bold uppercase tracking-widest text-indigo-600">WiFi poster</p>
-                <h2 className="text-2xl font-extrabold text-slate-900">Preview before print or download</h2>
-                <p className="mt-1 text-sm text-slate-500">Your selected content is automatically kept on one page.</p>
+                <p className="text-xs font-bold uppercase tracking-widest text-indigo-600">Printable Signage</p>
+                <h2 className="text-2xl font-extrabold text-slate-900">WiFi Poster Preview</h2>
+                <p className="mt-1 text-sm text-slate-500">Your network details and QR code formatted for immediate printing.</p>
               </div>
-              <button onClick={() => setPosterPreview(null)} className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700" aria-label="Close poster preview"><X /></button>
+              <button 
+                onClick={() => setPosterPreview(null)} 
+                className="rounded-xl p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 cursor-pointer" 
+                aria-label="Close poster preview"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
             <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
               <aside className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <label className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-500">Paper size</label>
-                <select value={posterSettings.paper} onChange={(event) => selectPosterPaper(event.target.value)} className="mb-4 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-bold text-slate-700 outline-none focus:border-indigo-500">
-                  {Object.entries(POSTER_PRESETS).map(([key, preset]) => <option key={key} value={key}>{preset.label}</option>)}
-                  <option value="custom">Custom size</option>
+                <select 
+                  value={posterSettings.paper} 
+                  onChange={(event) => selectPosterPaper(event.target.value)} 
+                  className="mb-4 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-bold text-slate-700 outline-none focus:border-indigo-500 cursor-pointer"
+                >
+                  {Object.entries(POSTER_PRESETS).map(([key, preset]) => (
+                    <option key={key} value={key}>{preset.label}</option>
+                  ))}
+                  <option value="custom">Custom Dimensions</option>
                 </select>
+
                 {posterSettings.paper === 'custom' && (
                   <div className="mb-4 grid grid-cols-2 gap-2">
-                    <label className="text-xs font-bold text-slate-500">Width (mm)<input type="number" min="100" max="1000" value={posterSettings.width} onChange={(event) => setPosterSettings((current) => ({ ...current, width: Number(event.target.value) || 100 }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 text-sm text-slate-800 outline-none focus:border-indigo-500" /></label>
-                    <label className="text-xs font-bold text-slate-500">Height (mm)<input type="number" min="100" max="1400" value={posterSettings.height} onChange={(event) => setPosterSettings((current) => ({ ...current, height: Number(event.target.value) || 100 }))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 text-sm text-slate-800 outline-none focus:border-indigo-500" /></label>
+                    <label className="text-xs font-bold text-slate-500">
+                      Width (mm)
+                      <input 
+                        type="number" 
+                        min="100" 
+                        max="1000" 
+                        value={posterSettings.width} 
+                        onChange={(event) => setPosterSettings((current) => ({ ...current, width: Number(event.target.value) || 100 }))} 
+                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 text-sm text-slate-800 outline-none focus:border-indigo-500" 
+                      />
+                    </label>
+                    <label className="text-xs font-bold text-slate-500">
+                      Height (mm)
+                      <input 
+                        type="number" 
+                        min="100" 
+                        max="1400" 
+                        value={posterSettings.height} 
+                        onChange={(event) => setPosterSettings((current) => ({ ...current, height: Number(event.target.value) || 100 }))} 
+                        className="mt-1 w-full rounded-lg border border-slate-200 bg-white p-2 text-sm text-slate-800 outline-none focus:border-indigo-500" 
+                      />
+                    </label>
                   </div>
                 )}
-                <p className="mb-5 rounded-xl bg-indigo-50 p-3 text-xs leading-5 text-indigo-700">{posterSettings.width} × {posterSettings.height} mm · One-page layout</p>
-                <button onClick={downloadWifiPoster} disabled={isPosterPreparing} className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-indigo-700 disabled:cursor-wait disabled:opacity-70"><Download className="w-4 h-4" /> Download poster PNG</button>
-                <button onClick={printWifiPoster} disabled={isPosterPreparing} className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-wait disabled:opacity-70"><Printer className="w-4 h-4" /> Print this size</button>
+
+                <p className="mb-5 rounded-xl bg-indigo-50 p-3 text-xs leading-5 text-indigo-700 font-medium">
+                  {posterSettings.width} × {posterSettings.height} mm · Single-page layout
+                </p>
+
+                <button 
+                  onClick={downloadWifiPoster} 
+                  disabled={isPosterPreparing} 
+                  className="mb-2 flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white transition-colors hover:bg-indigo-700 disabled:cursor-wait disabled:opacity-70 cursor-pointer"
+                >
+                  <Download className="w-4 h-4" /> Download Poster PNG
+                </button>
+
+                <button 
+                  onClick={printWifiPoster} 
+                  disabled={isPosterPreparing} 
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-wait disabled:opacity-70 cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" /> Print Directly
+                </button>
+
                 {posterError && <p className="mt-3 text-xs font-medium text-rose-600">{posterError}</p>}
               </aside>
 
               <div className="flex max-h-[70vh] items-center justify-center overflow-auto rounded-2xl bg-slate-200 p-5">
-                <div className="w-full max-w-[430px] shrink-0 bg-slate-50 p-5 text-center shadow-xl" style={{ aspectRatio: `${posterSettings.width} / ${posterSettings.height}` }}>
-                  <div className="flex h-full flex-col items-center rounded-2xl border border-slate-200 bg-white px-4 py-5">
+                <div 
+                  className="w-full max-w-[420px] shrink-0 bg-slate-50 p-5 text-center shadow-xl rounded-2xl" 
+                  style={{ aspectRatio: `${posterSettings.width} / ${posterSettings.height}` }}
+                >
+                  <div className="flex h-full flex-col items-center rounded-2xl border border-slate-200 bg-white px-4 py-5 shadow-inner">
                     <h3 className="text-xl font-extrabold text-indigo-600">{qrData.wifiTitle || 'FREE WiFi'}</h3>
                     <p className="mt-1 text-xs text-slate-500">{qrData.wifiSubtitle || 'Scan the code to connect instantly'}</p>
-                    <div className="my-auto rounded-2xl border-4 border-slate-100 bg-white p-2 shadow-sm"><Image src={posterPreview.qrDataUrl} alt="WiFi QR code" width={144} height={144} unoptimized className="w-36 max-w-full" /></div>
+                    <div className="my-auto rounded-2xl border-4 border-slate-100 bg-white p-2 shadow-sm">
+                      <Image src={posterPreview.qrDataUrl} alt="WiFi QR code" width={144} height={144} unoptimized className="w-36 max-w-full" />
+                    </div>
                     <div className="w-full rounded-xl bg-indigo-50 px-3 py-3">
                       <p className="text-[9px] font-bold tracking-widest text-slate-500">NETWORK NAME</p>
                       <p className="truncate text-sm font-extrabold text-slate-900">{qrData.wifiSsid || 'Guest WiFi'}</p>
@@ -383,306 +539,769 @@ export default function QRCodeGenerator() {
         </div>
       )}
       
-      {/* Lead Generation Modal */}
+      {/* Lead Generation Modal (Preserved & Polished) */}
       {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in">
-          <div className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl relative">
-            <button onClick={() => setShowModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"><X /></button>
-            <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4"><Zap className="w-8 h-8" /></div>
-            <h3 className="text-xl font-bold text-center text-gray-900 mb-2">Unlock Unlimited</h3>
-            <p className="text-gray-500 text-sm text-center mb-6">
-              You&apos;ve reached your free download limit. Enter your email to unlock unlimited high-res downloads forever.
-            </p>
-            <input 
-              type="email" placeholder="your@email.com" 
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 mb-4 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-              value={userEmail} onChange={(e) => setUserEmail(e.target.value)}
-            />
-            <button onClick={handleEmailSubmit} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl flex justify-center items-center gap-2 transition-all shadow-md shadow-indigo-600/20">
-              Unlock & Download <Send className="w-4 h-4" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl relative border border-slate-100">
+            <button 
+              onClick={() => setShowModal(false)} 
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 rounded-lg cursor-pointer"
+              aria-label="Close modal"
+            >
+              <X className="w-5 h-5" />
             </button>
+            <div className="w-14 h-14 bg-indigo-50 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-indigo-100 shadow-sm">
+              <Zap className="w-7 h-7" />
+            </div>
+            <h3 className="text-xl font-bold text-center text-slate-900 mb-2">Unlock Unlimited Exports</h3>
+            <p className="text-slate-500 text-xs text-center mb-6 leading-relaxed">
+              You have used your 2 free trial downloads. Enter your email address to unlock unlimited high-resolution QR downloads.
+            </p>
+            <div className="space-y-3">
+              <input 
+                type="email" 
+                placeholder="your@email.com" 
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition"
+                value={userEmail} 
+                onChange={(e) => setUserEmail(e.target.value)}
+              />
+              <button 
+                onClick={handleEmailSubmit} 
+                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3.5 rounded-xl flex justify-center items-center gap-2 transition-all shadow-md shadow-indigo-600/20 cursor-pointer text-sm"
+              >
+                Unlock Unlimited Access <Send className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-[10px] text-slate-400 text-center mt-4">
+              Instant activation &bull; Zero spam policy
+            </p>
           </div>
         </div>
       )}
 
-      {/* Navbar */}
-      <nav className="bg-white/80 backdrop-blur-md border-b border-gray-200/50 py-4 sticky top-0 z-40 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 flex justify-between items-center">
-          <Link href="/" className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-indigo-600"><ArrowLeft className="w-4 h-4" /> Back to Home</Link>
-          <span className="text-xl font-extrabold text-gray-900">Rootixa<span className="text-indigo-600">.</span></span>
+      {/* Top Navbar */}
+      <header className="bg-white/90 backdrop-blur-md border-b border-slate-200/80 py-3.5 sticky top-0 z-40 shadow-xs">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 flex justify-between items-center">
+          <Link 
+            href="/" 
+            className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-slate-600 hover:text-indigo-600 transition"
+          >
+            <ArrowLeft className="w-4 h-4" /> 
+            <span>Home</span>
+          </Link>
+          <div className="flex items-center gap-2">
+            <span className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
+              Rootixa<span className="text-indigo-600">.</span>
+            </span>
+            <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100 hidden sm:inline-block">
+              QR Studio
+            </span>
+          </div>
         </div>
-      </nav>
+      </header>
 
-      {/* AD SPACE 1: TOP BANNER (Perfect for Leaderboard Ads) */}
-      <div className="max-w-7xl mx-auto px-4 mt-6">
-        <AdSpace className="w-full h-[90px]" text="Top Banner Ad Space (728x90)" />
-      </div>
-
-      {/* Header & Toggle */}
-      <div className="max-w-7xl mx-auto px-4 pt-6 pb-6">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-6 bg-white p-4 rounded-3xl shadow-sm border border-gray-100">
+      {/* Page Title & Intro */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-8 pb-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-200/60 pb-5">
           <div>
-            <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900">QR Code Generator</h1>
-            <p className="text-sm text-gray-500">Create, customize, and track dynamic QR codes.</p>
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-[11px] font-bold mb-2 shadow-2xs">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Free Vector & High-Res Generator</span>
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
+              QR Code Generator
+            </h1>
+            <p className="mt-1 text-xs sm:text-sm text-slate-500">
+              Generate custom, scannable QR codes with custom styling, logos, and high-resolution exports.
+            </p>
           </div>
-          <div className="flex items-center bg-gray-100 p-1.5 rounded-full relative w-full md:w-auto">
-            <div className={`absolute top-1.5 bottom-1.5 w-[calc(50%-6px)] bg-white rounded-full shadow transition-all duration-300 ease-out ${isAdvanced ? 'left-[calc(50%+3px)]' : 'left-1.5'}`}></div>
-            <button onClick={() => setIsAdvanced(false)} className={`relative flex-1 md:w-32 py-2 text-sm font-bold z-10 transition-colors ${!isAdvanced ? 'text-indigo-600' : 'text-gray-500'}`}>Basic Mode</button>
-            <button onClick={() => setIsAdvanced(true)} className={`relative flex-1 md:w-32 py-2 text-sm font-bold flex items-center justify-center gap-1 z-10 transition-colors ${isAdvanced ? 'text-indigo-600' : 'text-gray-500'}`}>
-              <Sliders className="w-3.5 h-3.5" /> Advanced
-            </button>
+
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-xs">
+              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+              <span>100% Reliable Scannability</span>
+            </span>
           </div>
         </div>
       </div>
 
-      <main className="max-w-7xl mx-auto px-4">
+      {/* Main Two-Column Layout */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           
-          {/* LEFT PANEL */}
-          <div className="lg:col-span-8 space-y-6">
-            <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
-              <h2 className="text-lg font-bold mb-4">1. QR Content</h2>
-              <div className="flex flex-wrap gap-2 mb-6">
-                {[
-                  { id: 'url', name: 'URL', icon: <LinkIcon className="w-4 h-4" /> },
-                  { id: 'text', name: 'Text', icon: <Type className="w-4 h-4" /> },
-                  { id: 'wifi', name: 'WiFi', icon: <Wifi className="w-4 h-4" /> },
-                  { id: 'email', name: 'Email', icon: <Mail className="w-4 h-4" /> }
-                ].map(tab => (
-                  <button key={tab.id} onClick={() => setActiveTab(tab.id)} 
-                    className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold transition-all ${activeTab === tab.id ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
-                    {tab.icon} {tab.name}
-                  </button>
-                ))}
+          {/* ========================================================= */}
+          {/* LEFT CONFIGURATION PANEL (8 cols)                         */}
+          {/* ========================================================= */}
+          <div className="lg:col-span-7 space-y-6">
+
+            {/* STEP 1: CONTENT INPUT CARD */}
+            <div className="bg-white rounded-3xl p-6 sm:p-7 shadow-xs border border-slate-200/80">
+              <div className="flex items-center justify-between mb-5">
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-600">Step 1</span>
+                  <h2 className="text-lg font-extrabold text-slate-900">QR Content</h2>
+                </div>
+                <span className="text-xs text-slate-400 font-medium">Select data type</span>
               </div>
 
-              {activeTab === 'url' && <input value={qrData.url} onChange={e => handleDataChange('url', e.target.value)} className="w-full p-4 bg-gray-50 border rounded-2xl outline-none focus:border-indigo-500 transition-all" placeholder="https://example.com" />}
-              {activeTab === 'text' && <textarea value={qrData.text} onChange={e => handleDataChange('text', e.target.value)} rows="3" className="w-full p-4 bg-gray-50 border rounded-2xl outline-none focus:border-indigo-500 resize-none transition-all" placeholder="Enter your text..." />}
-              {activeTab === 'wifi' && (
-                <div className="space-y-4">
-                  <input value={qrData.wifiSsid} onChange={e => handleDataChange('wifiSsid', e.target.value)} className="w-full p-4 bg-gray-50 border rounded-2xl outline-none focus:border-indigo-500" placeholder="Network Name (SSID)" />
-                  <div className="flex gap-4">
-                    <input value={qrData.wifiPassword} onChange={e => handleDataChange('wifiPassword', e.target.value)} className="w-full p-4 bg-gray-50 border rounded-2xl outline-none focus:border-indigo-500" placeholder="Password" />
-                    <select value={qrData.wifiEncryption} onChange={e => handleDataChange('wifiEncryption', e.target.value)} className="w-1/3 p-4 bg-gray-50 border rounded-2xl font-bold outline-none focus:border-indigo-500">
-                      <option value="WPA">WPA/WPA2</option><option value="WEP">WEP</option><option value="nopass">None</option>
-                    </select>
-                  </div>
-                  <div className="grid gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-4">
-                    <div>
-                      <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-indigo-700">Poster headline</label>
-                      <input value={qrData.wifiTitle} maxLength={48} onChange={e => handleDataChange('wifiTitle', e.target.value)} className="w-full rounded-xl border border-indigo-100 bg-white p-3 text-sm font-bold text-gray-800 outline-none focus:border-indigo-500" placeholder="FREE WiFi" />
+              {/* Segmented Tab Interface */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-6">
+                {[
+                  { id: 'url', name: 'Website URL', icon: <LinkIcon className="w-4 h-4" /> },
+                  { id: 'text', name: 'Plain Text', icon: <Type className="w-4 h-4" /> },
+                  { id: 'wifi', name: 'Wi-Fi Network', icon: <Wifi className="w-4 h-4" /> },
+                  { id: 'email', name: 'Email Message', icon: <Mail className="w-4 h-4" /> }
+                ].map(tab => {
+                  const isActive = activeTab === tab.id;
+                  return (
+                    <button 
+                      key={tab.id} 
+                      onClick={() => setActiveTab(tab.id)} 
+                      type="button"
+                      className={`flex items-center justify-center gap-2 py-3 px-3 rounded-2xl text-xs font-bold transition-all cursor-pointer border ${
+                        isActive 
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm shadow-indigo-600/20' 
+                          : 'bg-slate-50 text-slate-600 border-slate-200/80 hover:bg-slate-100 hover:text-slate-900'
+                      }`}
+                    >
+                      {tab.icon}
+                      <span>{tab.name}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* DYNAMIC CONTENT INPUT FIELDS */}
+              <div className="space-y-4">
+                {/* 1. URL */}
+                {activeTab === 'url' && (
+                  <div className="space-y-1.5">
+                    <label htmlFor="qr-url-input" className="block text-xs font-bold text-slate-700">
+                      Website URL
+                    </label>
+                    <div className="relative">
+                      <input 
+                        id="qr-url-input"
+                        type="url"
+                        value={qrData.url} 
+                        onChange={e => handleDataChange('url', e.target.value)} 
+                        className={`w-full px-4 py-3.5 bg-slate-50 rounded-2xl border text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none transition ${
+                          isUrlInvalid 
+                            ? 'border-amber-400 focus:border-amber-500 bg-amber-50/20' 
+                            : 'border-slate-200 focus:border-indigo-500 focus:bg-white'
+                        }`}
+                        placeholder="https://example.com" 
+                      />
                     </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-bold uppercase tracking-wide text-indigo-700">Poster subheadline</label>
-                      <input value={qrData.wifiSubtitle} maxLength={90} onChange={e => handleDataChange('wifiSubtitle', e.target.value)} className="w-full rounded-xl border border-indigo-100 bg-white p-3 text-sm text-gray-800 outline-none focus:border-indigo-500" placeholder="Scan the code to connect instantly" />
+                    {isUrlInvalid && (
+                      <p className="text-[11px] text-amber-600 font-medium flex items-center gap-1 mt-1">
+                        <AlertTriangle className="w-3.5 h-3.5" /> Please enter a valid URL (e.g., https://example.com)
+                      </p>
+                    )}
+                    <p className="text-[11px] text-slate-400">
+                      Visitors will automatically open this link when scanning with their camera.
+                    </p>
+                  </div>
+                )}
+
+                {/* 2. Text */}
+                {activeTab === 'text' && (
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <label htmlFor="qr-text-input" className="block text-xs font-bold text-slate-700">
+                        Your text
+                      </label>
+                      <span className="text-[11px] text-slate-400 font-mono">
+                        {qrData.text.length} characters
+                      </span>
+                    </div>
+                    <textarea 
+                      id="qr-text-input"
+                      value={qrData.text} 
+                      onChange={e => handleDataChange('text', e.target.value)} 
+                      rows={4} 
+                      className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:bg-white resize-none transition" 
+                      placeholder="Enter plain text, notes, serial numbers, or a message..." 
+                    />
+                    <p className="text-[11px] text-slate-400">
+                      Scanners will display this raw text immediately upon scanning.
+                    </p>
+                  </div>
+                )}
+
+                {/* 3. Wi-Fi */}
+                {activeTab === 'wifi' && (
+                  <div className="space-y-4">
+                    <div className="space-y-1.5">
+                      <label htmlFor="wifi-ssid" className="block text-xs font-bold text-slate-700">
+                        Network Name (SSID)
+                      </label>
+                      <input 
+                        id="wifi-ssid"
+                        value={qrData.wifiSsid} 
+                        onChange={e => handleDataChange('wifiSsid', e.target.value)} 
+                        className="w-full px-4 py-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:bg-white" 
+                        placeholder="e.g. MyHome_WiFi_5G" 
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="sm:col-span-2 space-y-1.5">
+                        <label htmlFor="wifi-password" className="block text-xs font-bold text-slate-700">
+                          Password
+                        </label>
+                        <input 
+                          id="wifi-password"
+                          type="text"
+                          value={qrData.wifiPassword} 
+                          onChange={e => handleDataChange('wifiPassword', e.target.value)} 
+                          className="w-full px-4 py-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:bg-white" 
+                          placeholder="Network password" 
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label htmlFor="wifi-encryption" className="block text-xs font-bold text-slate-700">
+                          Security Type
+                        </label>
+                        <select 
+                          id="wifi-encryption"
+                          value={qrData.wifiEncryption} 
+                          onChange={e => handleDataChange('wifiEncryption', e.target.value)} 
+                          className="w-full px-3.5 py-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-bold text-slate-800 outline-none focus:border-indigo-500 cursor-pointer"
+                        >
+                          <option value="WPA">WPA / WPA2</option>
+                          <option value="WEP">WEP</option>
+                          <option value="nopass">None (Open)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Optional Signage Headline details for WiFi Poster */}
+                    <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 space-y-3">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-800">
+                        <Printer className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Printable Poster Details (Optional)</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label htmlFor="wifi-title" className="mb-1 block text-[11px] font-semibold text-slate-600">Headline</label>
+                          <input 
+                            id="wifi-title"
+                            value={qrData.wifiTitle} 
+                            maxLength={48} 
+                            onChange={e => handleDataChange('wifiTitle', e.target.value)} 
+                            className="w-full rounded-xl border border-indigo-200/80 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-indigo-500" 
+                            placeholder="FREE WiFi" 
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="wifi-sub" className="mb-1 block text-[11px] font-semibold text-slate-600">Subheadline</label>
+                          <input 
+                            id="wifi-sub"
+                            value={qrData.wifiSubtitle} 
+                            maxLength={90} 
+                            onChange={e => handleDataChange('wifiSubtitle', e.target.value)} 
+                            className="w-full rounded-xl border border-indigo-200/80 bg-white px-3 py-2 text-xs text-slate-800 outline-none focus:border-indigo-500" 
+                            placeholder="Scan the code to connect instantly" 
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. Email */}
+                {activeTab === 'email' && (
+                  <div className="space-y-3.5">
+                    <div className="space-y-1.5">
+                      <label htmlFor="email-recipient" className="block text-xs font-bold text-slate-700">
+                        Email Address
+                      </label>
+                      <input 
+                        id="email-recipient"
+                        value={qrData.email} 
+                        onChange={e => handleDataChange('email', e.target.value)} 
+                        type="email" 
+                        className={`w-full px-4 py-3.5 bg-slate-50 rounded-2xl border text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none transition ${
+                          isEmailInvalid 
+                            ? 'border-amber-400 focus:border-amber-500 bg-amber-50/20' 
+                            : 'border-slate-200 focus:border-indigo-500 focus:bg-white'
+                        }`}
+                        placeholder="recipient@example.com" 
+                      />
+                      {isEmailInvalid && (
+                        <p className="text-[11px] text-amber-600 font-medium flex items-center gap-1 mt-1">
+                          <AlertTriangle className="w-3.5 h-3.5" /> Please enter a valid email address
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label htmlFor="email-subject" className="block text-xs font-bold text-slate-700">
+                        Subject Line (Optional)
+                      </label>
+                      <input 
+                        id="email-subject"
+                        value={qrData.emailSubject} 
+                        onChange={e => handleDataChange('emailSubject', e.target.value)} 
+                        type="text" 
+                        className="w-full px-4 py-3 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:bg-white" 
+                        placeholder="e.g. Feedback regarding Rootixa" 
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label htmlFor="email-body" className="block text-xs font-bold text-slate-700">
+                        Message Body (Optional)
+                      </label>
+                      <textarea 
+                        id="email-body"
+                        value={qrData.emailBody} 
+                        onChange={e => handleDataChange('emailBody', e.target.value)} 
+                        rows={3} 
+                        className="w-full p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-medium text-slate-900 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:bg-white resize-none transition" 
+                        placeholder="Default message template pre-filled for the sender..." 
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* STEP 2: CUSTOMIZE & DESIGN CARD */}
+            <div className="bg-white rounded-3xl p-6 sm:p-7 shadow-xs border border-slate-200/80 space-y-6">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-600">Step 2</span>
+                  <h2 className="text-lg font-extrabold text-slate-900">Customize QR Design</h2>
+                </div>
+                <span className="text-xs text-slate-400 font-medium">Fine-tune styling & logo</span>
+              </div>
+
+              {/* Customization Sub-Navigation */}
+              <div className="flex items-center gap-1.5 rounded-2xl bg-slate-100 p-1 text-xs font-semibold overflow-x-auto no-scrollbar">
+                {[
+                  { id: 'pattern', label: 'Pattern & Eyes', icon: Grid },
+                  { id: 'colors', label: 'Colors', icon: Sliders },
+                  { id: 'branding', label: 'Brand Logo', icon: ImagePlus },
+                  { id: 'advanced', label: 'Error Correction', icon: Settings },
+                ].map(sub => {
+                  const Icon = sub.icon;
+                  const isCurrent = customizeTab === sub.id;
+                  return (
+                    <button
+                      key={sub.id}
+                      type="button"
+                      onClick={() => setCustomizeTab(sub.id)}
+                      className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
+                        isCurrent 
+                          ? 'bg-white font-bold text-indigo-600 shadow-xs' 
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <Icon className={`w-3.5 h-3.5 ${isCurrent ? 'text-indigo-600' : 'text-slate-400'}`} />
+                      <span>{sub.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* SUBSECTION 1: PATTERN & EYES */}
+              {customizeTab === 'pattern' && (
+                <div className="space-y-6 animate-in fade-in duration-200">
+                  {/* Dot Style Selection */}
+                  <div className="space-y-2.5">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
+                      QR Dot Pattern
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                      {dotPatternOptions.map(opt => {
+                        const isSelected = qrSettings.dotStyle === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => handleSettingChange('dotStyle', opt.id)}
+                            className={`p-3 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                              isSelected 
+                                ? 'border-indigo-600 bg-indigo-50/50 shadow-2xs' 
+                                : 'border-slate-200/80 bg-slate-50/50 hover:bg-slate-100/70'
+                            }`}
+                          >
+                            <span className="font-bold text-xs text-slate-900">{opt.label}</span>
+                            <span className="text-[10px] text-slate-500 mt-1 leading-snug">{opt.desc}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Eye Frame Shape Selection */}
+                  <div className="space-y-2.5 border-t border-slate-100 pt-5">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
+                      Corner Eye Frame Shape
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                      {eyeFrameOptions.map(opt => {
+                        const isSelected = qrSettings.eyeFrameStyle === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => handleSettingChange('eyeFrameStyle', opt.id)}
+                            className={`p-3 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                              isSelected 
+                                ? 'border-indigo-600 bg-indigo-50/50 shadow-2xs' 
+                                : 'border-slate-200/80 bg-slate-50/50 hover:bg-slate-100/70'
+                            }`}
+                          >
+                            <span className="font-bold text-xs text-slate-900">{opt.label}</span>
+                            <span className="text-[10px] text-slate-500 mt-1 leading-snug">{opt.desc}</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
               )}
-              {activeTab === 'email' && (
-                <input value={qrData.email} onChange={e => handleDataChange('email', e.target.value)} type="email" className="w-full p-4 bg-gray-50 border rounded-2xl outline-none focus:border-indigo-500 transition-all" placeholder="Recipient Email Address" />
+
+              {/* SUBSECTION 2: COLORS */}
+              {customizeTab === 'colors' && (
+                <div className="space-y-5 animate-in fade-in duration-200">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Foreground Color */}
+                    <div className="p-4 border border-slate-200/90 rounded-2xl bg-slate-50/60 flex items-center justify-between gap-4">
+                      <div>
+                        <label htmlFor="fg-hex" className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                          Foreground (QR Dots)
+                        </label>
+                        <div className="flex items-center gap-1">
+                          <input 
+                            id="fg-hex"
+                            type="text" 
+                            value={qrSettings.fgColor} 
+                            maxLength={7}
+                            onChange={e => {
+                              const val = e.target.value.toUpperCase();
+                              handleSettingChange('fgColor', val.startsWith('#') ? val : `#${val}`);
+                            }} 
+                            className="bg-white px-2 py-1 border border-slate-200 rounded-lg font-mono text-xs font-bold text-slate-800 outline-none w-24" 
+                          />
+                        </div>
+                      </div>
+                      <div className="relative w-12 h-12 rounded-xl overflow-hidden shadow-xs border-2 border-white ring-1 ring-slate-200 shrink-0">
+                        <input 
+                          type="color" 
+                          value={isValidHex(qrSettings.fgColor) ? qrSettings.fgColor : '#000000'} 
+                          onChange={e => handleSettingChange('fgColor', e.target.value.toUpperCase())} 
+                          className="absolute -top-3 -left-3 w-20 h-20 cursor-pointer" 
+                          aria-label="Foreground color picker"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Background Color */}
+                    <div className="p-4 border border-slate-200/90 rounded-2xl bg-slate-50/60 flex items-center justify-between gap-4">
+                      <div>
+                        <label htmlFor="bg-hex" className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+                          Background Surface
+                        </label>
+                        <div className="flex items-center gap-1">
+                          <input 
+                            id="bg-hex"
+                            type="text" 
+                            value={qrSettings.bgColor} 
+                            maxLength={7}
+                            onChange={e => {
+                              const val = e.target.value.toUpperCase();
+                              handleSettingChange('bgColor', val.startsWith('#') ? val : `#${val}`);
+                            }} 
+                            className="bg-white px-2 py-1 border border-slate-200 rounded-lg font-mono text-xs font-bold text-slate-800 outline-none w-24" 
+                          />
+                        </div>
+                      </div>
+                      <div className="relative w-12 h-12 rounded-xl overflow-hidden shadow-xs border-2 border-white ring-1 ring-slate-200 shrink-0">
+                        <input 
+                          type="color" 
+                          value={isValidHex(qrSettings.bgColor) ? qrSettings.bgColor : '#FFFFFF'} 
+                          onChange={e => handleSettingChange('bgColor', e.target.value.toUpperCase())} 
+                          className="absolute -top-3 -left-3 w-20 h-20 cursor-pointer" 
+                          aria-label="Background color picker"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Contrast Guard Notification */}
+                  {isLowContrast ? (
+                    <div className="rounded-2xl bg-amber-50/90 border border-amber-200 p-3.5 flex items-start gap-2.5 text-xs text-amber-800">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-bold">Low Color Contrast Notice</p>
+                        <p className="text-[11px] text-amber-700 mt-0.5 leading-relaxed">
+                          Your foreground and background colors are very close in luminance ({contrastRatio.toFixed(1)}:1). Darker foreground on lighter background ensures 100% quick scanning across all phone cameras.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl bg-slate-50 p-3 flex items-center justify-between text-xs text-slate-500 border border-slate-100">
+                      <span className="flex items-center gap-1.5 font-medium">
+                        <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>High scan contrast ratio ({contrastRatio.toFixed(1)}:1)</span>
+                      </span>
+                      <button 
+                        type="button" 
+                        onClick={() => {
+                          handleSettingChange('fgColor', '#4F46E5');
+                          handleSettingChange('bgColor', '#FFFFFF');
+                        }}
+                        className="text-[11px] font-bold text-indigo-600 hover:underline cursor-pointer"
+                      >
+                        Reset to Default
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* SUBSECTION 3: BRAND LOGO */}
+              {customizeTab === 'branding' && (
+                <div className="space-y-5 animate-in fade-in duration-200">
+                  <div className="p-4 sm:p-5 border border-dashed border-slate-300 rounded-2xl bg-slate-50/70 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-white border border-slate-200 flex items-center justify-center shrink-0 shadow-2xs">
+                        {qrSettings.logo ? (
+                          <Image src={qrSettings.logo} alt="Logo preview" width={36} height={36} className="object-contain max-w-full max-h-full rounded-md" unoptimized />
+                        ) : (
+                          <ImagePlus className="w-5 h-5 text-slate-400" />
+                        )}
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-900">
+                          {qrSettings.logo ? (logoFileName || 'Custom Brand Logo') : 'Embed Brand Logo'}
+                        </p>
+                        <p className="text-[11px] text-slate-500">
+                          PNG, JPG, or SVG. Auto-centered with quiet margin cutout.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 self-end sm:self-auto">
+                      {qrSettings.logo ? (
+                        <button 
+                          onClick={handleRemoveLogo} 
+                          type="button"
+                          className="inline-flex items-center gap-1 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 px-3 py-2 rounded-xl transition cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" /> Remove
+                        </button>
+                      ) : (
+                        <label className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold py-2.5 px-4 rounded-xl cursor-pointer transition shadow-xs">
+                          <ImagePlus className="w-3.5 h-3.5" />
+                          <span>Upload Logo</span>
+                          <input type="file" accept="image/*" onChange={handleLogoUpload} className="hidden" />
+                        </label>
+                      )}
+                    </div>
+                  </div>
+
+                  {qrSettings.logo && (
+                    <div className="space-y-2 rounded-2xl border border-slate-100 bg-slate-50/50 p-4">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-bold text-slate-700">Logo Scale</span>
+                        <span className="font-mono text-indigo-600 font-bold">{Math.round(qrSettings.logoSize * 100)}%</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="0.15" 
+                        max="0.40" 
+                        step="0.05" 
+                        value={qrSettings.logoSize} 
+                        onChange={e => handleSettingChange('logoSize', parseFloat(e.target.value))} 
+                        className="w-full accent-indigo-600 cursor-pointer" 
+                      />
+                      <p className="text-[10px] text-slate-400">
+                        Capped at 40% to guarantee QR readability. Error correction level is maintained at High.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="rounded-2xl bg-indigo-50/70 border border-indigo-100 p-3.5 flex items-start gap-2 text-xs text-indigo-800">
+                    <Info className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                    <p className="text-[11px] leading-relaxed">
+                      <strong>Best Practice:</strong> Use square logos with transparent backgrounds. Error correction level is automatically set to High to preserve readability.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* SUBSECTION 4: ADVANCED ERROR CORRECTION */}
+              {customizeTab === 'advanced' && (
+                <div className="space-y-4 animate-in fade-in duration-200">
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
+                      Error Correction Level
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {errorCorrectionOptions.map(opt => {
+                        const isSelected = qrSettings.errorCorrection === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => handleSettingChange('errorCorrection', opt.id)}
+                            className={`p-3.5 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                              isSelected 
+                                ? 'border-indigo-600 bg-indigo-50/50 shadow-2xs' 
+                                : 'border-slate-200/80 bg-slate-50/50 hover:bg-slate-100/70'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-xs text-slate-900">{opt.label}</span>
+                              {isSelected && <Check className="w-3.5 h-3.5 text-indigo-600" />}
+                            </div>
+                            <span className="text-[11px] text-slate-500 mt-1 leading-snug">{opt.desc}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
 
-            {/* Design Controls */}
-            {!isAdvanced ? (
-              <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 animate-in fade-in slide-in-from-bottom-4">
-                <h2 className="text-lg font-bold mb-4">2. Basic Design</h2>
-                <div className="grid grid-cols-2 gap-4 mb-4">
-                  <div className="bg-gray-50 p-3 rounded-2xl border flex items-center justify-between">
-                    <div>
-                       <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">QR Color</label>
-                       <span className="font-mono text-sm text-gray-800">{qrSettings.fgColor}</span>
-                    </div>
-                    <div className="relative w-10 h-10 rounded-xl overflow-hidden shadow-sm border border-gray-200">
-                      <input type="color" value={qrSettings.fgColor} onChange={e => handleSettingChange('fgColor', e.target.value)} className="absolute -top-2 -left-2 w-16 h-16 cursor-pointer" />
-                    </div>
-                  </div>
-                  <div className="bg-gray-50 p-3 rounded-2xl border flex items-center justify-between">
-                    <div>
-                       <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Background</label>
-                       <span className="font-mono text-sm text-gray-800">{qrSettings.bgColor}</span>
-                    </div>
-                    <div className="relative w-10 h-10 rounded-xl overflow-hidden shadow-sm border border-gray-200">
-                      <input type="color" value={qrSettings.bgColor} onChange={e => handleSettingChange('bgColor', e.target.value)} className="absolute -top-2 -left-2 w-16 h-16 cursor-pointer" />
-                    </div>
-                  </div>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-2xl border flex items-center justify-between">
-                  <span className="text-sm font-bold text-gray-700">Add Logo</span>
-                  {qrSettings.logo ? (
-                    <button onClick={() => handleSettingChange('logo', null)} className="text-red-500 text-sm font-bold bg-red-50 px-3 py-1.5 rounded-lg">Remove</button>
-                  ) : (
-                    <label className="bg-indigo-600 text-white text-xs font-bold py-2 px-4 rounded-lg cursor-pointer">Upload <input type="file" onChange={handleLogoUpload} className="hidden" /></label>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="animate-in fade-in slide-in-from-bottom-4 space-y-4">
-                <Accordion id="design" title="QR Pattern & Colors" icon={<Grid className="w-5 h-5 text-indigo-500" />} isOpen={openAccordion === 'design'} onToggle={setOpenAccordion}>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                       <label className="block text-xs font-bold text-gray-500 uppercase mb-2">QR Dot Pattern</label>
-                       <select value={qrSettings.dotStyle} onChange={e => handleSettingChange('dotStyle', e.target.value)} className="w-full p-3 bg-gray-50 border rounded-xl outline-none font-medium">
-                         <option value="square">Standard Squares</option><option value="dots">Rounded Dots (Modern)</option>
-                         <option value="rounded">Soft Rounded</option><option value="classy">Classy Style</option>
-                         <option value="classy-rounded">Classy Rounded</option><option value="extra-rounded">Extra Rounded</option>
-                       </select>
-                    </div>
-                    <div>
-                       <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Eye Frame Shape</label>
-                       <select value={qrSettings.eyeFrameStyle} onChange={e => handleSettingChange('eyeFrameStyle', e.target.value)} className="w-full p-3 bg-gray-50 border rounded-xl outline-none font-medium">
-                         <option value="square">Sharp Square</option><option value="dot">Circular Dot</option><option value="extra-rounded">Extra Rounded Square</option>
-                       </select>
-                    </div>
-                    
-                    <div className="md:col-span-2 grid grid-cols-2 gap-4">
-                      <div className="p-3 border rounded-xl bg-gray-50 flex items-center justify-between">
-                        <div>
-                          <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Foreground</label>
-                          <input type="text" value={qrSettings.fgColor} onChange={e => handleSettingChange('fgColor', e.target.value)} className="bg-transparent font-mono text-sm outline-none w-20" />
-                        </div>
-                        <div className="relative w-10 h-10 rounded-xl overflow-hidden shadow-sm border border-gray-200">
-                          <input type="color" value={qrSettings.fgColor} onChange={e => handleSettingChange('fgColor', e.target.value)} className="absolute -top-2 -left-2 w-16 h-16 cursor-pointer" />
-                        </div>
-                      </div>
-                      <div className="p-3 border rounded-xl bg-gray-50 flex items-center justify-between">
-                        <div>
-                          <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Background</label>
-                          <input type="text" value={qrSettings.bgColor} onChange={e => handleSettingChange('bgColor', e.target.value)} className="bg-transparent font-mono text-sm outline-none w-20" />
-                        </div>
-                        <div className="relative w-10 h-10 rounded-xl overflow-hidden shadow-sm border border-gray-200">
-                          <input type="color" value={qrSettings.bgColor} onChange={e => handleSettingChange('bgColor', e.target.value)} className="absolute -top-2 -left-2 w-16 h-16 cursor-pointer" />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </Accordion>
+            {/* AD SPACE (Clean Non-Intrusive Bottom Banner) */}
+            <AdSpace className="w-full h-20" text="Sponsored Workspace Partner" />
 
-                <Accordion id="logo" title="Logo & Branding" icon={<ImagePlus className="w-5 h-5 text-pink-500" />} isOpen={openAccordion === 'logo'} onToggle={setOpenAccordion}>
-                   <div className="space-y-6">
-                     <div className="flex items-center justify-between p-4 border border-dashed border-gray-300 rounded-2xl bg-gray-50">
-                        <div>
-                          <p className="font-bold text-gray-900">Brand Logo</p>
-                          <p className="text-xs text-gray-500">Auto-centered with background cutout</p>
-                        </div>
-                        {qrSettings.logo ? (
-                          <button onClick={() => handleSettingChange('logo', null)} className="text-red-500 text-sm font-bold bg-red-50 px-3 py-1.5 rounded-lg flex items-center gap-1"><Trash2 className="w-4 h-4"/> Remove</button>
-                        ) : (
-                          <label className="bg-indigo-600 text-white text-sm font-bold py-2 px-4 rounded-xl cursor-pointer">Upload File<input type="file" onChange={handleLogoUpload} className="hidden" /></label>
-                        )}
-                     </div>
-                     {qrSettings.logo && (
-                       <div>
-                         <div className="flex justify-between text-xs font-bold text-gray-500 mb-2"><span>Logo Scale Size</span> <span>{Math.round(qrSettings.logoSize * 100)}%</span></div>
-                         <input type="range" min="0.1" max="0.5" step="0.05" value={qrSettings.logoSize} onChange={e => handleSettingChange('logoSize', parseFloat(e.target.value))} className="w-full accent-indigo-600" />
-                       </div>
-                     )}
-                   </div>
-                </Accordion>
-                
-                <Accordion id="advanced" title="Advanced Settings" icon={<Settings className="w-5 h-5 text-slate-600" />} isOpen={openAccordion === 'advanced'} onToggle={setOpenAccordion}>
-                   <div>
-                     <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Error Correction Level</label>
-                     <select value={qrSettings.errorCorrection} onChange={e => handleSettingChange('errorCorrection', e.target.value)} className="w-full p-3 bg-gray-50 border rounded-xl outline-none font-medium">
-                       <option value="L">Low (Best for simple designs)</option>
-                       <option value="M">Medium (Standard)</option>
-                       <option value="Q">Quartile</option>
-                       <option value="H">High (Required for Logos)</option>
-                     </select>
-                   </div>
-                </Accordion>
-              </div>
-            )}
           </div>
 
-          {/* RIGHT PANEL (Sticky Wrapper for Both Preview & Ads) */}
-          <div className="lg:col-span-4">
-            {/* The single sticky wrapper container */}
-            <div className="sticky top-28 space-y-6">
+          {/* ========================================================= */}
+          {/* RIGHT PREVIEW & DOWNLOAD CARD (5 cols, sticky on desktop)  */}
+          {/* ========================================================= */}
+          <div className="lg:col-span-5">
+            <div className="sticky top-24 space-y-6">
               
-              {/* Box 1: Preview & Download Card */}
-              <div className="bg-white rounded-3xl p-6 shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-gray-100 flex flex-col items-center">
+              {/* CENTERPIECE PREVIEW CARD */}
+              <div className="bg-white rounded-3xl p-6 sm:p-7 shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-slate-200/80 flex flex-col items-center">
                 
-                {/* Premium Center Badge */}
-                <div className="relative mb-6">
-                  <div className="absolute -inset-1 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full blur opacity-20"></div>
-                  <div className="relative inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white border border-gray-100 text-indigo-700 text-xs font-bold shadow-sm">
+                {/* Live Preview Indicator */}
+                <div className="w-full flex items-center justify-between mb-5 border-b border-slate-100 pb-3">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold">
                     <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
                     </span>
-                    Live Preview
+                    <span>Live Preview</span>
                   </div>
+
+                  <span className="text-[11px] font-mono font-bold text-slate-400">
+                    Auto-generated
+                  </span>
                 </div>
 
-                {/* Engine Canvas */}
+                {/* QR Canvas Centerpiece Surface */}
                 <div 
-                  className="p-4 rounded-2xl mb-8 border border-gray-200 flex justify-center items-center transition-colors duration-500 shadow-[inset_0_2px_10px_rgba(0,0,0,0.02)]"
+                  className="p-5 rounded-2xl mb-6 border border-slate-200/90 flex justify-center items-center transition-colors duration-300 shadow-sm max-w-full overflow-hidden"
                   style={{ backgroundColor: qrSettings.bgColor }}
                 >
-                  <div ref={qrRef} className="rounded-xl overflow-hidden [&>canvas]:max-w-full [&>canvas]:h-auto" />
+                  <div ref={qrRef} className="rounded-xl overflow-hidden [&>canvas]:max-w-full [&>canvas]:h-auto flex justify-center items-center" />
                 </div>
 
-                <div className="w-full">
-                  {/* GLOBAL EXPORT SETTINGS */}
-                  <div className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-xl mb-3">
-                     <span className="text-sm font-bold text-gray-600 flex items-center gap-1"><FileImage className="w-4 h-4"/> Format:</span>
-                     <select value={qrSettings.format} onChange={e => handleSettingChange('format', e.target.value)} className="bg-transparent font-bold text-indigo-600 outline-none cursor-pointer">
-                       <option value="png">PNG (High Res)</option>
-                       <option value="jpeg">JPG</option>
-                       <option value="webp">WEBP</option>
-                       <option value="svg">SVG (Vector)</option>
-                     </select>
-                  </div>
-
-                  <div className="p-3 bg-indigo-50/70 border border-indigo-100 rounded-xl mb-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-sm font-bold text-gray-700">Export quality</p>
-                        <p className="text-[11px] text-gray-500">Higher resolution for print and sharp scanning.</p>
-                      </div>
-                      <select value={qrSettings.exportSize} onChange={e => handleSettingChange('exportSize', Number(e.target.value))} className="shrink-0 bg-white border border-indigo-100 rounded-lg px-2 py-1.5 text-sm font-bold text-indigo-700 outline-none cursor-pointer">
-                        <option value={1024}>Standard · 1024px</option>
-                        <option value={2048}>High · 2048px</option>
-                        <option value={4096}>Maximum · 4096px</option>
-                      </select>
+                {/* Format & Quality Selectors */}
+                <div className="w-full space-y-3.5">
+                  {/* Format Selector Pills */}
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                      Export Format
+                    </label>
+                    <div className="grid grid-cols-4 gap-1.5 p-1 bg-slate-100 rounded-xl">
+                      {[
+                        { id: 'png', label: 'PNG' },
+                        { id: 'jpeg', label: 'JPG' },
+                        { id: 'webp', label: 'WEBP' },
+                        { id: 'svg', label: 'SVG' }
+                      ].map(fmt => (
+                        <button
+                          key={fmt.id}
+                          type="button"
+                          onClick={() => handleSettingChange('format', fmt.id)}
+                          className={`py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer text-center ${
+                            qrSettings.format === fmt.id 
+                              ? 'bg-white text-indigo-600 shadow-2xs' 
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          {fmt.label}
+                        </button>
+                      ))}
                     </div>
                   </div>
 
-                  {/* Print WiFi Sign Button */}
+                  {/* Resolution Selector */}
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold text-slate-800">Resolution</p>
+                      <p className="text-[10px] text-slate-500">Pixel dimension of downloaded raster file</p>
+                    </div>
+                    <select 
+                      value={qrSettings.exportSize} 
+                      onChange={e => handleSettingChange('exportSize', Number(e.target.value))} 
+                      className="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 outline-none cursor-pointer"
+                    >
+                      <option value={1024}>Standard · 1024px</option>
+                      <option value={2048}>High · 2048px</option>
+                      <option value={4096}>Maximum · 4096px</option>
+                    </select>
+                  </div>
+
+                  {/* Optional WiFi Signage Button */}
                   {activeTab === 'wifi' && (
                     <button 
                       onClick={openWifiPosterPreview}
                       disabled={isPosterPreparing}
-                      className="w-full mb-3 py-3 rounded-xl font-bold bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 transition-all flex justify-center items-center gap-2 disabled:cursor-wait disabled:opacity-70"
+                      type="button"
+                      className="w-full py-2.5 rounded-xl font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200/80 transition flex justify-center items-center gap-2 text-xs disabled:cursor-wait disabled:opacity-70 cursor-pointer shadow-2xs"
                     >
-                      <Printer className="w-4 h-4" /> {isPosterPreparing ? 'Preparing poster…' : 'Preview WiFi Poster'}
+                      <Printer className="w-3.5 h-3.5" /> 
+                      <span>{isPosterPreparing ? 'Preparing layout…' : 'Preview & Print WiFi Poster'}</span>
                     </button>
                   )}
 
+                  {/* Primary Download Button */}
                   <button 
                     onClick={initiateDownload}
                     disabled={isExporting}
-                    className={`w-full py-4 rounded-xl font-bold shadow-md transition-all flex justify-center items-center gap-2 disabled:cursor-wait disabled:opacity-80 ${
-                      isDownloaded ? 'bg-emerald-500 text-white shadow-emerald-500/20' : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20'
+                    type="button"
+                    className={`w-full py-4 rounded-2xl font-extrabold shadow-lg transition-all flex justify-center items-center gap-2.5 text-sm disabled:cursor-wait disabled:opacity-80 cursor-pointer ${
+                      isDownloaded 
+                        ? 'bg-emerald-600 text-white shadow-emerald-500/20' 
+                        : 'bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white shadow-indigo-600/25 hover:-translate-y-0.5'
                     }`}
                   >
                     {isDownloaded ? <CheckCircle className="w-5 h-5" /> : <Download className="w-5 h-5" />}
-                    {isDownloaded ? 'Saved Successfully!' : isExporting ? 'Preparing high-quality file…' : 'Download QR Code'}
+                    <span>{isDownloaded ? 'Downloaded Successfully!' : isExporting ? 'Generating high-res file…' : 'Download QR Code'}</span>
                   </button>
 
-                  <p className="text-[11px] text-gray-400 text-center mt-3">SVG stays perfectly sharp at every size.</p>
-                  
-                  <p className="text-[11px] text-gray-400 text-center uppercase font-bold tracking-wider mt-4">
-                    Download Limit: {isSubscribed ? <span className="text-emerald-500 font-extrabold tracking-widest">Unlimited</span> : `${downloadCount}/2`}
-                  </p>
+                  {/* Download Limit & Status */}
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+                    <span>{qrSettings.format === 'svg' ? 'Vector SVG (infinite scale)' : `${qrSettings.exportSize} × ${qrSettings.exportSize}px`}</span>
+                    <span className="font-semibold text-slate-600">
+                      Downloads: {isSubscribed ? <span className="text-emerald-600 font-bold">Unlimited</span> : `${downloadCount}/2 free`}
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              {/* Box 2: SIDEBAR AD (Moves safely together with the Preview box) */}
-              <AdSpace className="w-full h-[250px]" text="Sidebar Ad Space (300x250)" />
-              
+              {/* Sidebar Support / Help Note */}
+              <div className="rounded-2xl border border-slate-200/80 bg-white p-4 text-xs text-slate-500 space-y-1 shadow-2xs">
+                <p className="font-bold text-slate-800 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" /> Scan Guarantee
+                </p>
+                <p className="text-[11px] leading-relaxed text-slate-500">
+                  All generated QR codes adhere strictly to ISO/IEC 18004 standards and are scannable by all modern iOS, Android, and industrial barcode scanners.
+                </p>
+              </div>
+
             </div>
           </div>
           
