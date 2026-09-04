@@ -24,7 +24,9 @@ import {
 import {
   evaluateScanSafety,
   getGradientRotation,
-  DESIGN_PRESETS
+  DESIGN_PRESETS,
+  PRESET_CATEGORIES,
+  detectMatchingPreset
 } from '@/lib/qr/design-safety';
 
 const PREVIEW_SIZE = 300;
@@ -68,10 +70,84 @@ function isValidHex(hex) {
   return /^#([0-9A-F]{3}){1,2}$/i.test(hex);
 }
 
+// Authentic miniature visual representation of each preset
+function PresetThumbnail({ preset }) {
+  const s = preset.settings;
+  const isDark = s.bgColor === '#0B0F17';
+  const isGrad = s.isGradient;
+  const fg = s.fgColor;
+  const eyeFrame = s.customEyeColor ? s.eyeFrameColor : fg;
+  const eyeDot = s.customEyeColor ? s.eyeDotColor : fg;
+
+  const frameClass = s.eyeFrameStyle === 'extra-rounded' 
+    ? 'rounded-[4px]' 
+    : s.eyeFrameStyle === 'dot' 
+    ? 'rounded-full' 
+    : 'rounded-none';
+
+  const dotClass = s.eyeDotStyle === 'dot' ? 'rounded-full' : 'rounded-none';
+
+  const moduleClass = s.dotStyle === 'dots' 
+    ? 'rounded-full' 
+    : s.dotStyle === 'rounded' || s.dotStyle === 'classy-rounded'
+    ? 'rounded-[2px]' 
+    : s.dotStyle === 'extra-rounded' 
+    ? 'rounded-full' 
+    : 'rounded-none';
+
+  const moduleStyle = isGrad
+    ? { background: `linear-gradient(135deg, ${s.gradientStart}, ${s.gradientEnd})` }
+    : { backgroundColor: fg };
+
+  return (
+    <div 
+      className="w-12 h-12 rounded-xl p-1.5 flex flex-col justify-between shrink-0 shadow-2xs border border-slate-200/90 transition group-hover:scale-105"
+      style={{ backgroundColor: isDark ? '#0B0F17' : '#FFFFFF' }}
+    >
+      <div className="flex justify-between items-center w-full">
+        <div 
+          className={`w-3.5 h-3.5 border-2 flex items-center justify-center p-[1px] ${frameClass}`}
+          style={{ borderColor: isGrad ? s.gradientStart : eyeFrame }}
+        >
+          <div className={`w-1.5 h-1.5 ${dotClass}`} style={{ backgroundColor: isGrad ? s.gradientStart : eyeDot }} />
+        </div>
+        <div 
+          className={`w-3.5 h-3.5 border-2 flex items-center justify-center p-[1px] ${frameClass}`}
+          style={{ borderColor: isGrad ? s.gradientEnd : eyeFrame }}
+        >
+          <div className={`w-1.5 h-1.5 ${dotClass}`} style={{ backgroundColor: isGrad ? s.gradientEnd : eyeDot }} />
+        </div>
+      </div>
+
+      <div className="flex justify-around items-center w-full px-0.5">
+        <div className={`w-1 h-1 ${moduleClass}`} style={moduleStyle} />
+        <div className={`w-1 h-1 ${moduleClass}`} style={moduleStyle} />
+        <div className={`w-1 h-1 ${moduleClass}`} style={moduleStyle} />
+      </div>
+
+      <div className="flex justify-between items-end w-full">
+        <div 
+          className={`w-3.5 h-3.5 border-2 flex items-center justify-center p-[1px] ${frameClass}`}
+          style={{ borderColor: isGrad ? s.gradientStart : eyeFrame }}
+        >
+          <div className={`w-1.5 h-1.5 ${dotClass}`} style={{ backgroundColor: isGrad ? s.gradientStart : eyeDot }} />
+        </div>
+
+        <div className="flex gap-0.5 items-center mb-0.5">
+          <div className={`w-1 h-1 ${moduleClass}`} style={moduleStyle} />
+          <div className={`w-1 h-1 ${moduleClass}`} style={moduleStyle} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function QRCodeGenerator() {
   const [activeTab, setActiveTab] = useState('text');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [customizeTab, setCustomizeTab] = useState('styles');
+  const [activePreset, setActivePreset] = useState('classic');
+  const [presetCategory, setPresetCategory] = useState('all');
   
   // Comprehensive QR Data State for all 12 types
   const [qrData, setQrData] = useState({
@@ -204,6 +280,13 @@ export default function QRCodeGenerator() {
     return QR_TYPES.filter(t => t.category === selectedCategory);
   }, [selectedCategory]);
 
+  // Filtered presets based on selected preset category pill
+  const filteredPresets = useMemo(() => {
+    const entries = Object.entries(DESIGN_PRESETS);
+    if (presetCategory === 'all') return entries;
+    return entries.filter(([_, p]) => p.category === presetCategory);
+  }, [presetCategory]);
+
   const updateQRCode = useCallback(() => {
     if (!qrCodeInstance.current) return;
 
@@ -291,38 +374,36 @@ export default function QRCodeGenerator() {
   useEffect(() => { updateQRCode(); }, [updateQRCode]);
 
   const handleDataChange = (field, value) => setQrData(prev => ({ ...prev, [field]: value }));
-  const handleSettingChange = (field, value) => setQrSettings(prev => ({ ...prev, [field]: value }));
+  
+  const handleSettingChange = (field, value) => {
+    setQrSettings(prev => {
+      const updated = { ...prev, [field]: value };
+      const matching = detectMatchingPreset(updated);
+      setActivePreset(matching);
+      return updated;
+    });
+  };
 
   const handleApplyPreset = (presetKey) => {
     const preset = DESIGN_PRESETS[presetKey];
     if (!preset) return;
+    setActivePreset(presetKey);
     setQrSettings(prev => ({
       ...prev,
-      ...preset.settings
+      ...preset.settings,
+      logo: prev.logo,
+      logoSize: prev.logo ? Math.min(preset.settings.logoSize || 0.30, 0.38) : 0.30,
+      logoBg: preset.settings.logoBg || 'none',
+      errorCorrection: prev.logo ? 'H' : preset.settings.errorCorrection
     }));
   };
 
   const handleResetDesign = () => {
+    setActivePreset('classic');
     setQrSettings(prev => ({
       ...prev,
-      fgColor: '#000000',
-      bgColor: '#FFFFFF',
-      isTransparentBg: false,
-      isGradient: false,
-      gradientStart: '#000000',
-      gradientEnd: '#4F46E5',
-      gradientDirection: 'diagonal',
-      dotStyle: 'square',
-      eyeFrameStyle: 'square',
-      eyeDotStyle: 'square',
-      customEyeColor: false,
-      eyeFrameColor: '#000000',
-      eyeDotColor: '#000000',
-      logo: null,
-      logoSize: 0.30,
-      logoBg: 'none',
-      margin: 12,
-      errorCorrection: 'H',
+      ...DESIGN_PRESETS.classic.settings,
+      logo: null
     }));
     setLogoFileName('');
   };
@@ -1607,37 +1688,93 @@ export default function QRCodeGenerator() {
 
               {/* SUBSECTION 1: QUICK STYLES / PRESETS */}
               {customizeTab === 'styles' && (
-                <div className="space-y-4 animate-in fade-in duration-200">
-                  <div className="space-y-1">
-                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-600">
-                      Curated Style Presets
-                    </label>
-                    <p className="text-[11px] text-slate-400">
-                      Click any preset to immediately style your QR code. Your data content remains 100% untouched.
-                    </p>
+                <div className="space-y-5 animate-in fade-in duration-200">
+                  {/* Preset Header & Active State Badge */}
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-100 pb-3">
+                    <div>
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                        Curated Style Presets
+                      </label>
+                      <p className="text-[11px] text-slate-400">
+                        Click any template to instantly transform the design. Your data content remains 100% untouched.
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 self-start sm:self-auto">
+                      <span className="text-[11px] font-bold text-slate-500">Current:</span>
+                      {activePreset !== 'custom' ? (
+                        <span className="inline-flex items-center gap-1 text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-lg">
+                          <Check className="w-3.5 h-3.5 text-indigo-600" />
+                          <span>{DESIGN_PRESETS[activePreset]?.name || 'Classic'}</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-lg">
+                          <Sliders className="w-3.5 h-3.5 text-amber-600" />
+                          <span>Customized</span>
+                        </span>
+                      )}
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
-                    {Object.entries(DESIGN_PRESETS).map(([key, preset]) => (
-                      <button
-                        key={key}
-                        type="button"
-                        onClick={() => handleApplyPreset(key)}
-                        className="p-3.5 rounded-2xl border border-slate-200/80 bg-slate-50/60 hover:bg-white hover:border-indigo-500 text-left transition group cursor-pointer shadow-2xs hover:shadow-sm"
-                      >
-                        <div className="flex items-center justify-between mb-1">
-                          <span className="font-extrabold text-xs text-slate-900 group-hover:text-indigo-600 transition">
-                            {preset.name}
-                          </span>
-                          <span className="text-[10px] uppercase font-bold text-slate-400 bg-white border border-slate-200 px-1.5 py-0.5 rounded-md">
-                            Preset
-                          </span>
-                        </div>
-                        <p className="text-[10px] text-slate-500 leading-snug">
-                          {preset.desc}
-                        </p>
-                      </button>
-                    ))}
+                  {/* Preset Category Switcher */}
+                  <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-2xl overflow-x-auto no-scrollbar">
+                    {PRESET_CATEGORIES.map(cat => {
+                      const isCatActive = presetCategory === cat.id;
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => setPresetCategory(cat.id)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                            isCatActive 
+                              ? 'bg-white text-indigo-600 shadow-2xs' 
+                              : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          {cat.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* 10 Visual Preset Cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {filteredPresets.map(([key, preset]) => {
+                      const isSelected = activePreset === key;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => handleApplyPreset(key)}
+                          className={`p-3.5 rounded-2xl border text-left transition flex items-center gap-3.5 cursor-pointer shadow-2xs group ${
+                            isSelected 
+                              ? 'border-indigo-600 bg-indigo-50/60 ring-2 ring-indigo-500/20 shadow-xs' 
+                              : 'border-slate-200/90 bg-white hover:bg-slate-50/80 hover:border-slate-300'
+                          }`}
+                        >
+                          <PresetThumbnail preset={preset} />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-1 mb-0.5">
+                              <span className={`font-black text-xs ${isSelected ? 'text-indigo-700' : 'text-slate-900 group-hover:text-indigo-600'}`}>
+                                {preset.name}
+                              </span>
+                              {isSelected ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-100/70 px-1.5 py-0.5 rounded-md">
+                                  <Check className="w-3 h-3" /> Active
+                                </span>
+                              ) : (
+                                <span className="text-[9px] uppercase font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                                  {preset.category}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-slate-500 leading-snug line-clamp-2">
+                              {preset.desc}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
