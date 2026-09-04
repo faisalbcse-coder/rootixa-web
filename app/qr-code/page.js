@@ -138,7 +138,7 @@ export default function QRCodeGenerator() {
   });
 
   const [qrSettings, setQrSettings] = useState({
-    fgColor: '#4F46E5', 
+    fgColor: '#000000', 
     bgColor: '#FFFFFF',
     logo: null, 
     logoSize: 0.35, 
@@ -233,10 +233,10 @@ export default function QRCodeGenerator() {
         height: PREVIEW_SIZE, 
         margin: 12,
         data: 'Hello from Rootixa!',
-        dotsOptions: { color: '#4F46E5', type: 'square' },
+        dotsOptions: { color: '#000000', type: 'square' },
         backgroundOptions: { color: '#FFFFFF' },
-        cornersSquareOptions: { type: 'square', color: '#4F46E5' },
-        cornersDotOptions: { type: 'square', color: '#4F46E5' },
+        cornersSquareOptions: { type: 'square', color: '#000000' },
+        cornersDotOptions: { type: 'square', color: '#000000' },
         qrOptions: { errorCorrectionLevel: 'H' },
         imageOptions: { hideBackgroundDots: true, imageSize: 0.35, margin: 8 }
       });
@@ -1651,7 +1651,7 @@ export default function QRCodeGenerator() {
                       <button 
                         type="button" 
                         onClick={() => {
-                          handleSettingChange('fgColor', '#4F46E5');
+                          handleSettingChange('fgColor', '#000000');
                           handleSettingChange('bgColor', '#FFFFFF');
                         }} 
                         className="text-[11px] font-bold text-indigo-600 hover:underline cursor-pointer"
