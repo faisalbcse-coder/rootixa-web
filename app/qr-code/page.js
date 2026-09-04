@@ -60,12 +60,26 @@ const CATEGORIES = [
   { id: 'info', label: 'Info & Utilities' },
 ];
 
-// Advertisement Placeholder Component
-const AdSpace = ({ className = "", text = "Advertisement Space" }) => (
-  <div className={`bg-slate-50/80 border border-dashed border-slate-200 rounded-2xl flex items-center justify-center text-slate-400 font-semibold text-xs tracking-wider uppercase overflow-hidden relative group ${className}`}>
-    <span className="relative z-10 text-center px-4">{text}</span>
+// Flexible Semantic Advertisement Placeholder Component (Reserved for future Google AdSense / Sponsor placements)
+const AdPlaceholder = ({ format = "rectangle", className = "", label = "Advertisement Space" }) => (
+  <div 
+    data-ad-slot="future-placement"
+    role="region"
+    aria-label="Advertisement Placement Area"
+    className={`w-full rounded-2xl border border-dashed border-slate-200/90 bg-slate-50/70 p-4 flex flex-col items-center justify-center text-center overflow-hidden relative transition-all group ${
+      format === 'banner' ? 'min-h-[76px]' : 'min-h-[120px]'
+    } ${className}`}
+  >
+    <div className="flex items-center gap-1.5 text-slate-400 font-bold text-[10px] tracking-widest uppercase select-none">
+      <span>{label}</span>
+    </div>
+    <span className="text-[10px] text-slate-300 font-medium select-none mt-0.5">
+      Reserved space for future partner placement
+    </span>
   </div>
 );
+
+const AdSpace = AdPlaceholder;
 
 function isValidHex(hex) {
   return /^#([0-9A-F]{3}){1,2}$/i.test(hex);
@@ -2537,7 +2551,7 @@ export default function QRCodeGenerator() {
             </div>
 
             {/* AD SPACE (Clean Non-Intrusive Bottom Banner) */}
-            <AdSpace className="w-full h-20" text="Sponsored Workspace Partner" />
+            <AdPlaceholder format="banner" className="w-full h-20" label="Sponsored Workspace Partner" />
 
           </div>
 
@@ -2545,7 +2559,7 @@ export default function QRCodeGenerator() {
           {/* RIGHT PREVIEW & DOWNLOAD CARD (5 cols, sticky on desktop)  */}
           {/* ========================================================= */}
           <div className="lg:col-span-5">
-            <div className="sticky top-24 space-y-6">
+            <div className="lg:sticky lg:top-20 space-y-5 lg:max-h-[calc(100vh-5.5rem)] lg:overflow-y-auto lg:pr-1 lg:pb-6 [scrollbar-width:thin]">
               
               {/* CENTERPIECE PREVIEW CARD */}
               <div className="bg-white rounded-3xl p-6 sm:p-7 shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-slate-200/80 flex flex-col items-center">
@@ -2731,6 +2745,13 @@ export default function QRCodeGenerator() {
                   </div>
                 </div>
               </div>
+
+              {/* FUTURE ADVERTISEMENT SPACE (RESERVED AREA) */}
+              <AdPlaceholder 
+                format="rectangle" 
+                className="h-32 sm:h-36 shadow-2xs" 
+                label="Advertisement Space" 
+              />
 
               {/* Sidebar Support / Help Note */}
               <div className="rounded-2xl border border-slate-200/80 bg-white p-4 text-xs text-slate-500 space-y-1 shadow-2xs">
