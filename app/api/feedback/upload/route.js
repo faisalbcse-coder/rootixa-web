@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 import crypto from "crypto";
+import { createServiceClient } from "@/lib/supabase/service";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const ALLOWED_EXTENSIONS = [
@@ -35,18 +36,52 @@ export async function POST(request) {
       );
     }
 
-    const uploadDir = path.join(process.cwd(), "public", "uploads", "feedback");
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
+    const safeUniqueName = `fb_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.${ext}`;
+    const buffer = Buffer.from(await file.arrayBuffer());
+    let publicUrl = null;
+
+    // 1. Try Supabase Storage (primary for cloud & serverless)
+    try {
+      const service = createServiceClient();
+      const { error: uploadError } = await service.storage
+        .from("feedback_attachments")
+        .upload(safeUniqueName, buffer, {
+          contentType: file.type || `application/${ext}`,
+          upsert: true,
+        });
+
+      if (!uploadError) {
+        const { data: urlData } = service.storage
+          .from("feedback_attachments")
+          .getPublicUrl(safeUniqueName);
+        if (urlData?.publicUrl) {
+          publicUrl = urlData.publicUrl;
+        }
+      } else {
+        console.warn("Supabase storage upload error:", uploadError);
+      }
+    } catch (storageErr) {
+      console.warn("Supabase client error in upload handler:", storageErr);
     }
 
-    const safeUniqueName = `fb_${Date.now()}_${crypto.randomBytes(4).toString("hex")}.${ext}`;
-    const filePath = path.join(uploadDir, safeUniqueName);
+    // 2. Fallback to local filesystem (for offline local development)
+    if (!publicUrl) {
+      try {
+        const uploadDir = path.join(process.cwd(), "public", "uploads", "feedback");
+        if (!fs.existsSync(uploadDir)) {
+          fs.mkdirSync(uploadDir, { recursive: true });
+        }
+        const filePath = path.join(uploadDir, safeUniqueName);
+        fs.writeFileSync(filePath, buffer);
+        publicUrl = `/uploads/feedback/${safeUniqueName}`;
+      } catch (fsErr) {
+        console.warn("Local filesystem write fallback failed:", fsErr);
+      }
+    }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    fs.writeFileSync(filePath, buffer);
-
-    const publicUrl = `/uploads/feedback/${safeUniqueName}`;
+    if (!publicUrl) {
+      throw new Error("Unable to save file to cloud or local storage.");
+    }
 
     return NextResponse.json({
       success: true,

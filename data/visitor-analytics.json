@@ -461,7 +461,7 @@
       "entry_page": "/feedback",
       "exit_page": "/",
       "page_views_count": 2,
-      "duration_seconds": 60,
+      "duration_seconds": 80,
       "traffic_source": "Direct",
       "utm_source": null,
       "utm_medium": null,
@@ -476,7 +476,7 @@
         "/"
       ],
       "started_at": "2026-09-05T14:32:40.873Z",
-      "last_activity_at": "2026-09-05T14:33:22.120Z"
+      "last_activity_at": "2026-09-05T14:47:22.115Z"
     }
   }
 }

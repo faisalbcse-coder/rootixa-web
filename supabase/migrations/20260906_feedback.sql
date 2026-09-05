@@ -12,6 +12,7 @@ create table if not exists public.feedback (
   user_email text not null,
   device_info text,
   wants_reply boolean default true,
+  attachment jsonb,
   status text not null default 'pending' check (status in ('pending', 'reviewed', 'replied', 'resolved', 'featured')),
   admin_reply text,
   admin_name text,

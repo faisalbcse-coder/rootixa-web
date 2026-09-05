@@ -43,8 +43,8 @@ export async function POST(request) {
     }
 
     const adminName =
-      adminContext.admin?.full_name ||
-      (adminContext.user?.email ? adminContext.user.email.split("@")[0] : "Rootixa Admin");
+      adminContext?.admin?.full_name ||
+      (adminContext?.user?.email ? adminContext.user.email.split("@")[0] : "Rootixa Admin");
 
     const result = await replyToFeedback({
       feedbackId,
