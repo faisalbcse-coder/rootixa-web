@@ -7,6 +7,7 @@ import {
   Users,
   Wrench,
   BarChart3,
+  MessageSquare,
   Sparkles,
   CreditCard,
   FileText,
@@ -42,6 +43,13 @@ export function AdminSidebar({ isOpen, onClose, adminProfile }) {
       href: "/ceo/tools",
       icon: Wrench,
       active: pathname === "/ceo/tools",
+      available: true,
+    },
+    {
+      name: "Feedback",
+      href: "/ceo/feedback",
+      icon: MessageSquare,
+      active: pathname === "/ceo/feedback",
       available: true,
     },
     {

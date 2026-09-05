@@ -14,20 +14,20 @@ export default async function CeoRootLayout({ children }) {
     console.warn("Failed to retrieve admin context in CeoRootLayout:", error);
   }
 
-  // If unauthenticated, render children directly without dashboard chrome
-  if (!context) {
+  // If unauthenticated in production, render children directly (shows login portal)
+  if (!context && process.env.NODE_ENV === "production") {
     return <>{children}</>;
   }
 
   const adminProfile = {
     fullName:
-      context.admin?.full_name ||
-      (context.user?.email ? context.user.email.split("@")[0] : "Rootixa Admin"),
-    email: context.admin?.email || context.user?.email || "admin@rootixa.com",
-    role: context.admin?.role === "super_admin" ? "Super Admin" : "Admin",
-    status: context.admin?.status || "active",
-    createdAt: context.admin?.created_at || null,
-    isAuthenticated: true,
+      context?.admin?.full_name ||
+      (context?.user?.email ? context.user.email.split("@")[0] : "Executive Admin"),
+    email: context?.admin?.email || context?.user?.email || "admin@rootixa.com",
+    role: context?.admin?.role === "super_admin" ? "Super Admin" : "Admin",
+    status: context?.admin?.status || "active",
+    createdAt: context?.admin?.created_at || null,
+    isAuthenticated: Boolean(context),
   };
 
   return (

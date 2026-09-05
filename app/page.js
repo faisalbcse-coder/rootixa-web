@@ -6,7 +6,7 @@ import {
   Search, Moon, Sun, Menu, X, Star, Users, ArrowRight, 
   FileText, ImagePlus, Zap, QrCode, Archive,
   Calculator, LayoutGrid, Heart, Sparkles, Command,
-  Home, Wrench, Phone, User, ChevronDown
+  Home, Wrench, Phone, User, ChevronDown, MessageSquare
 } from 'lucide-react';
 
 const ToolCard = ({ tool }) => (
@@ -163,9 +163,9 @@ export default function App() {
               <Wrench className="w-4 h-4" /> All Tools
             </a>
 
-            <a href="#" className={desktopNavItemClass}>
-              <Phone className="w-4 h-4" /> Feedback
-            </a>
+            <Link href="/feedback" className={desktopNavItemClass}>
+              <MessageSquare className="w-4 h-4" /> Feedback
+            </Link>
           </div>
 
           <div className="hidden lg:flex items-center space-x-5">
@@ -219,7 +219,7 @@ export default function App() {
             </div>
 
             <a href="#" className="text-slate-800 dark:text-slate-200 font-bold hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-slate-800 px-4 py-3 rounded-xl flex items-center gap-3 transition-colors cursor-pointer"><Wrench className="w-5 h-5 text-indigo-500" /> All Tools</a>
-            <a href="#" className="text-slate-800 dark:text-slate-200 font-bold hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-slate-800 px-4 py-3 rounded-xl flex items-center gap-3 transition-colors cursor-pointer"><Phone className="w-5 h-5 text-indigo-500" /> Feedback</a>
+            <Link href="/feedback" className="text-slate-800 dark:text-slate-200 font-bold hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-slate-800 px-4 py-3 rounded-xl flex items-center gap-3 transition-colors cursor-pointer"><MessageSquare className="w-5 h-5 text-indigo-500" /> Feedback & Suggestions</Link>
             
             <div className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-800/80 rounded-xl cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors" onClick={toggleDarkMode}>
                <span className="text-slate-800 dark:text-slate-200 font-bold flex items-center gap-2">
@@ -320,6 +320,36 @@ export default function App() {
         </div>
       </section>
 
+      {/* Community Feedback & Suggestion CTA Section */}
+      <section className="py-16 px-4 bg-gradient-to-b from-transparent via-indigo-50/40 to-violet-50/30 dark:from-transparent dark:via-indigo-950/20 dark:to-slate-900/40 border-t border-slate-200/60 dark:border-slate-800/80">
+        <div className="max-w-5xl mx-auto">
+          <div className="relative overflow-hidden bg-gradient-to-r from-violet-600 via-indigo-600 to-blue-600 rounded-3xl p-8 sm:p-12 text-white shadow-2xl shadow-indigo-500/20 flex flex-col md:flex-row items-center justify-between gap-8">
+            <div className="absolute top-0 right-0 w-96 h-96 bg-white/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
+            <div className="relative z-10 max-w-xl text-center md:text-left">
+              <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/20 backdrop-blur-md text-white text-xs font-bold mb-4">
+                <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                <span>We Build What You Need</span>
+              </div>
+              <h3 className="text-2xl sm:text-3xl font-extrabold tracking-tight mb-3">
+                Have Ideas, Need a Tool, or Found a Glitch?
+              </h3>
+              <p className="text-indigo-100 text-sm sm:text-base leading-relaxed font-medium">
+                Rootixa evolves through community voice. Suggest new converters, utilities, or workflows, and help us keep digital tools 100% free for everyone.
+              </p>
+            </div>
+            <div className="relative z-10 flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto flex-shrink-0">
+              <Link
+                href="/feedback"
+                className="w-full sm:w-auto px-7 py-3.5 bg-white text-indigo-700 hover:bg-slate-100 rounded-2xl font-extrabold text-sm shadow-lg transition-all duration-300 flex items-center justify-center gap-2 group cursor-pointer"
+              >
+                <MessageSquare className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
+                Submit Feedback & Suggestions
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <footer className="bg-white dark:bg-[#090E17] border-t border-slate-200 dark:border-slate-800 pt-16 pb-8 px-4 mt-auto transition-colors duration-500 relative overflow-hidden">
         <div className="absolute bottom-0 right-0 w-96 h-96 bg-indigo-500/5 dark:bg-indigo-500/10 blur-[100px] rounded-full pointer-events-none"></div>
         <div className="max-w-7xl mx-auto relative z-10">
@@ -350,8 +380,8 @@ export default function App() {
               <h4 className="font-extrabold text-slate-900 dark:text-white mb-5 text-sm uppercase tracking-wider">Company</h4>
               <ul className="space-y-3 text-sm text-slate-500 dark:text-slate-400 font-medium">
                 <li><a href="#" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">About Us</a></li>
-                <li><a href="#" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">Contact</a></li>
-                <li><a href="#" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">Suggest Tool</a></li>
+                <li><Link href="/feedback" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">Feedback & Contact</Link></li>
+                <li><Link href="/feedback" className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">Suggest Tool</Link></li>
               </ul>
             </div>
 
