@@ -6,7 +6,7 @@ import {
   LayoutGrid, ArrowLeft, Star, Sun, Moon,
   Lightbulb, AlertTriangle, MessageSquare, Send,
   CheckCircle2, Mail, User, RefreshCw, ChevronDown,
-  Image, FileText, X, Paperclip
+  Image as ImageIcon, FileText, X, Paperclip
 } from "lucide-react";
 
 const CATEGORIES = [
@@ -28,7 +28,15 @@ const ROOTIXA_TOOLS = [
 ];
 
 export default function FeedbackPage() {
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const savedTheme = localStorage.getItem("rootixa_theme");
+      return savedTheme === "dark" || document.documentElement.classList.contains("dark");
+    } catch {
+      return false;
+    }
+  });
   const fileInputRef = useRef(null);
 
   // Form fields
@@ -54,14 +62,11 @@ export default function FeedbackPage() {
   // Sync theme
   useEffect(() => {
     try {
-      const savedTheme = localStorage.getItem("rootixa_theme");
-      const isDark = savedTheme === "dark" || document.documentElement.classList.contains("dark");
-      setDarkMode(isDark);
-      document.documentElement.classList.toggle("dark", isDark);
+      document.documentElement.classList.toggle("dark", darkMode);
     } catch {
       // ignore
     }
-  }, []);
+  }, [darkMode]);
 
   const toggleDarkMode = () => {
     const next = !darkMode;
@@ -403,7 +408,7 @@ export default function FeedbackPage() {
                     onClick={() => fileInputRef.current?.click()}
                     className="w-full border-2 border-dashed border-slate-200 dark:border-slate-700 hover:border-indigo-400 dark:hover:border-indigo-500 rounded-2xl p-4 text-center cursor-pointer transition-colors bg-slate-50/50 dark:bg-slate-800/30 flex items-center justify-center gap-2.5 text-xs font-semibold text-slate-600 dark:text-slate-300 group"
                   >
-                    <Image className="w-4 h-4 text-indigo-500 group-hover:scale-110 transition-transform" />
+                    <ImageIcon className="w-4 h-4 text-indigo-500 group-hover:scale-110 transition-transform" />
                     <span>Upload screenshot or document (PNG, JPG, PDF up to 10MB)</span>
                   </button>
                 ) : isUploadingFile ? (

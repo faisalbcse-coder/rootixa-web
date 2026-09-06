@@ -44,15 +44,26 @@ export function FeedbackClientView({ initialFeedbacks = [] }) {
   };
 
   React.useEffect(() => {
-    setFeedbacks(initialFeedbacks);
-    if (initialFeedbacks.length > 0) {
-      setSelectedFeedback(initialFeedbacks[0]);
-      setReplyMessage(initialFeedbacks[0]?.admin_reply || "");
-    } else {
-      setSelectedFeedback(null);
-    }
-    fetchLatestFeedbacks();
-  }, [initialFeedbacks]);
+    let ignore = false;
+    fetch("/api/ceo/feedback")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!ignore && data?.success && Array.isArray(data.feedbacks)) {
+          setFeedbacks(data.feedbacks);
+          if (data.feedbacks.length > 0) {
+            setSelectedFeedback((prev) => {
+              if (!prev) return data.feedbacks[0];
+              const match = data.feedbacks.find((f) => f.id === prev.id);
+              return match || data.feedbacks[0];
+            });
+          }
+        }
+      })
+      .catch(() => {});
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   const filteredFeedbacks = feedbacks.filter((item) => {
     if (filterStatus !== "all" && item.status !== filterStatus) return false;
