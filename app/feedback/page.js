@@ -202,7 +202,7 @@ export default function FeedbackPage() {
   return (
     <div className={`min-h-screen font-sans flex flex-col transition-colors duration-300 ${darkMode ? "dark bg-[#090E17] text-slate-100" : "bg-slate-50 text-slate-800"}`}>
       {/* Header */}
-      <header className="w-full border-b border-slate-200/80 dark:border-slate-800/80 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md sticky top-0 z-40">
+      <header className="w-full border-b border-slate-200/70 dark:border-slate-800/70 bg-slate-50/85 dark:bg-slate-900/85 backdrop-blur-md sticky top-0 z-40 shadow-2xs">
         <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 group">
             <div className="w-8 h-8 bg-gradient-to-br from-violet-600 to-indigo-600 rounded-lg flex items-center justify-center text-white shadow-sm group-hover:scale-105 transition-transform">
