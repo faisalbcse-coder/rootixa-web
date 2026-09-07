@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import "./globals.css";
 import { VisitorTracker } from "@/components/analytics/visitor-tracker";
+import { ToolTransitionProvider } from "@/components/tools/tool-transition-context";
 
 export const metadata = {
   metadataBase: new URL("https://rootixa.com"),
@@ -22,7 +23,9 @@ export default function RootLayout({ children }) {
         <Suspense fallback={null}>
           <VisitorTracker />
         </Suspense>
-        {children}
+        <ToolTransitionProvider>
+          {children}
+        </ToolTransitionProvider>
       </body>
     </html>
   );

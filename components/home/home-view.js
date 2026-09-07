@@ -14,9 +14,6 @@ import {
   FileText,
   ImagePlus,
   Zap,
-  QrCode,
-  Archive,
-  Calculator,
   LayoutGrid,
   Heart,
   Sparkles,
@@ -28,116 +25,10 @@ import {
   ShieldCheck,
   Globe,
   SlidersHorizontal,
-  CheckCircle2,
-  Clock,
-  ExternalLink,
 } from "lucide-react";
-
-// Canonical Tools Data
-const CANONICAL_TOOLS = [
-  {
-    id: "qr-code",
-    name: "QR & BAR Code Generator",
-    desc: "Create custom, trackable QR and Bar codes with premium brand logos and custom styling.",
-    category: "QR & Barcode",
-    categoryId: "qr",
-    icon: QrCode,
-    iconColor: "text-slate-700 dark:text-slate-300",
-    badge: "Live & Free",
-    isLive: true,
-    link: "/qr-code",
-    users: "2.1M",
-    rating: 4.9,
-    featured: true,
-  },
-  {
-    id: "image-resizer",
-    name: "Image Resizer & Crop",
-    desc: "Resize, crop, and optimize images for any social media platform effortlessly.",
-    category: "Image Tools",
-    categoryId: "image",
-    icon: ImagePlus,
-    iconColor: "text-indigo-600 dark:text-indigo-400",
-    badge: "In Development",
-    isLive: false,
-    link: "#popular-tools",
-    users: "3.2M",
-    rating: 4.9,
-    featured: true,
-  },
-  {
-    id: "cv-builder",
-    name: "Pro CV Builder",
-    desc: "Build professional, ATS-friendly resumes in minutes to land your dream job.",
-    category: "Document Tools",
-    categoryId: "document",
-    icon: FileText,
-    iconColor: "text-blue-600 dark:text-blue-400",
-    badge: "In Development",
-    isLive: false,
-    link: "#popular-tools",
-    users: "1.5M",
-    rating: 4.8,
-    featured: true,
-  },
-  {
-    id: "bg-remover",
-    name: "AI Background Remover & Enhancer",
-    desc: "Extract subjects and enhance photo quality using advanced AI in 1 click.",
-    category: "AI Tools",
-    categoryId: "ai",
-    icon: Sparkles,
-    iconColor: "text-fuchsia-600 dark:text-fuchsia-400",
-    badge: "In Development",
-    isLive: false,
-    link: "#popular-tools",
-    users: "850K",
-    rating: 4.9,
-    featured: false,
-  },
-  {
-    id: "pdf-converter",
-    name: "Image & PDF Converter",
-    desc: "Convert images to PDF or extract images from PDF documents seamlessly.",
-    category: "PDF Tools",
-    categoryId: "pdf",
-    icon: Archive,
-    iconColor: "text-violet-600 dark:text-violet-400",
-    badge: "In Development",
-    isLive: false,
-    link: "#popular-tools",
-    users: "4.1M",
-    rating: 4.7,
-    featured: false,
-  },
-  {
-    id: "invoice-generator",
-    name: "Invoice Generator",
-    desc: "Generate professional invoices and receipts on the go for your clients.",
-    category: "Business Tools",
-    categoryId: "business",
-    icon: Calculator,
-    iconColor: "text-emerald-600 dark:text-emerald-400",
-    badge: "In Development",
-    isLive: false,
-    link: "#popular-tools",
-    users: "920K",
-    rating: 4.8,
-    featured: false,
-  },
-];
-
-// Categories Catalog
-const CATEGORIES = [
-  { id: "all", name: "All Tools", count: "6 Tools", icon: LayoutGrid },
-  { id: "pdf", name: "PDF Tools", count: "Merge & Convert", icon: Archive },
-  { id: "image", name: "Image Tools", count: "Resize & Crop", icon: ImagePlus },
-  { id: "qr", name: "QR & Barcode", count: "Custom Codes", icon: QrCode },
-  { id: "ai", name: "AI Tools", count: "Photo & Text", icon: Sparkles },
-  { id: "document", name: "Document Tools", count: "Resumes & Files", icon: FileText },
-  { id: "business", name: "Business Tools", count: "Invoicing", icon: Calculator },
-  { id: "converters", name: "Converters", count: "Format Tools", icon: SlidersHorizontal },
-];
+import { CANONICAL_TOOLS, CATEGORIES } from "@/lib/tools/data";
+import { searchToolsSemantic } from "@/lib/tools/semantic-search";
+import { useToolTransition, ToolLink } from "@/components/tools/tool-transition-context";
 
 // FAQ items
 const FAQ_ITEMS = [
@@ -174,6 +65,7 @@ const FAQ_ITEMS = [
 ];
 
 export function HomeView() {
+  const { openTool } = useToolTransition();
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -235,13 +127,7 @@ export function HomeView() {
     }
 
     if (searchQuery.trim()) {
-      const q = searchQuery.trim().toLowerCase();
-      list = list.filter(
-        (t) =>
-          t.name.toLowerCase().includes(q) ||
-          t.desc.toLowerCase().includes(q) ||
-          t.category.toLowerCase().includes(q)
-      );
+      list = searchToolsSemantic(list, searchQuery);
     }
 
     return list;
@@ -313,6 +199,9 @@ export function HomeView() {
             <a href="#popular-tools" className={navLinkClass}>
               <Wrench className="w-3.5 h-3.5" /> Popular Tools
             </a>
+            <Link href="/tools" className={navLinkClass}>
+              <LayoutGrid className="w-3.5 h-3.5" /> All Tools
+            </Link>
             <a href="#why-rootixa" className={navLinkClass}>
               <ShieldCheck className="w-3.5 h-3.5" /> Why Rootixa
             </a>
@@ -393,6 +282,13 @@ export function HomeView() {
             >
               <Wrench className="w-4 h-4 text-indigo-500" /> Popular Tools
             </a>
+            <Link
+              href="/tools"
+              onClick={() => setMobileMenuOpen(false)}
+              className="text-slate-800 dark:text-slate-200 font-bold hover:text-indigo-600 hover:bg-white/90 dark:hover:bg-slate-800/90 px-4 py-2.5 rounded-xl flex items-center gap-3 transition-colors shadow-none hover:shadow-2xs"
+            >
+              <LayoutGrid className="w-4 h-4 text-indigo-500" /> All Tools
+            </Link>
             <a
               href="#why-rootixa"
               onClick={() => setMobileMenuOpen(false)}
@@ -496,8 +392,8 @@ export function HomeView() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search for a tool..."
-                aria-label="Search for a tool"
+                placeholder="Search by task or tool (e.g. 'apply for job', 'client bill', 'scan code')..."
+                aria-label="AI Semantic Search for tools"
                 className="block w-full pl-12 sm:pl-14 pr-24 sm:pr-28 py-4 sm:py-4.5 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/95 dark:bg-slate-800/90 shadow-lg shadow-slate-200/40 dark:shadow-black/20 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/15 text-base sm:text-lg outline-none transition-all placeholder:text-slate-400 font-medium text-slate-900 dark:text-white"
               />
               <div className="absolute inset-y-2 right-2 flex items-center gap-1.5">
@@ -552,26 +448,6 @@ export function HomeView() {
         </section>
 
 
-        {/* ============================================================
-            3. EXACTLY ONE RESPONSIVE ADVERTISEMENT PLACEMENT
-            Strictly placed after Popular Categories and before Popular Tools.
-            Controlled min-height (90px) to max-height (110px).
-            Zero layout shift (CLS). Clean natural look when empty.
-        ============================================================ */}
-        <section aria-label="Sponsored Advertisement" className="py-8 px-4">
-          <div className="max-w-4xl mx-auto">
-            <div
-              className="w-full min-h-[90px] max-h-[110px] rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-850/40 p-4 flex flex-col items-center justify-center text-center shadow-xs transition-colors"
-            >
-              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">
-                Advertisement
-              </span>
-              <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">
-                Sponsor & Community Ad Placement Slot
-              </p>
-            </div>
-          </div>
-        </section>
 
         {/* ============================================================
             4. POPULAR FREE ONLINE TOOLS SECTION
@@ -606,17 +482,13 @@ export function HomeView() {
                     Clear category filter
                   </button>
                 )}
-                <a
-                  href="#popular-tools"
-                  onClick={() => {
-                    setActiveCategory("all");
-                    setSearchQuery("");
-                  }}
+                <Link
+                  href="/tools"
                   className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 px-3.5 py-2 rounded-xl transition-colors"
                 >
                   <span>View All Tools</span>
                   <ArrowRight className="w-3.5 h-3.5" />
-                </a>
+                </Link>
               </div>
             </div>
 
@@ -652,7 +524,14 @@ export function HomeView() {
                   return (
                     <div
                       key={tool.id}
-                      className="group bg-white dark:bg-slate-800/90 p-6 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 shadow-xs hover:shadow-xl hover:border-indigo-400 dark:hover:border-indigo-500/50 transition-all duration-300 flex flex-col justify-between"
+                      onClick={(e) => {
+                        if (tool.isLive && !e.target.closest("a, button")) {
+                          openTool(tool.name, tool.link);
+                        }
+                      }}
+                      className={`group bg-white dark:bg-slate-800/90 p-6 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 shadow-xs hover:shadow-xl hover:border-indigo-400 dark:hover:border-indigo-500/50 transition-all duration-300 flex flex-col justify-between ${
+                        tool.isLive ? "cursor-pointer" : ""
+                      }`}
                     >
                       <div>
                         <div className="flex items-start justify-between mb-4">
@@ -670,12 +549,25 @@ export function HomeView() {
                           </span>
                         </div>
 
-                        <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                          {tool.name}
-                        </h3>
+                        <div className="mb-2">
+                          <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                            {tool.category}
+                          </span>
+                          <h2 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors mt-0.5">
+                            {tool.name}
+                          </h2>
+                        </div>
                         <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed line-clamp-2">
                           {tool.desc}
                         </p>
+
+                        {/* AI Match Reason Badge */}
+                        {tool.matchReason && searchQuery.trim() && (
+                          <div className="mt-3 flex items-center gap-1.5 text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50/90 dark:bg-indigo-950/60 border border-indigo-200/70 dark:border-indigo-800/60 px-2.5 py-1 rounded-lg">
+                            <Sparkles className="w-3 h-3 text-indigo-500 shrink-0" />
+                            <span className="truncate">AI Match: {tool.matchReason}</span>
+                          </div>
+                        )}
                       </div>
 
                       <div className="pt-5 mt-6 border-t border-slate-100 dark:border-slate-700/60 flex items-center justify-between">
@@ -689,13 +581,14 @@ export function HomeView() {
                         </div>
 
                         {tool.isLive ? (
-                          <Link
+                          <ToolLink
                             href={tool.link}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-xs group-hover:shadow-indigo-600/30"
+                            toolName={tool.name}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-all shadow-xs group-hover:shadow-indigo-600/30 cursor-pointer"
                           >
                             <span>Open Tool</span>
                             <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
-                          </Link>
+                          </ToolLink>
                         ) : (
                           <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-700/60 px-2.5 py-1 rounded-lg">
                             Coming Soon
@@ -727,71 +620,21 @@ export function HomeView() {
 
 
         {/* ============================================================
-            6. FEATURED TOOLS SECTION
+            ADVERTISEMENT PLACEMENT (BELOW POPULAR TOOLS)
+            Controlled min-height (90px) to max-height (110px).
+            Zero layout shift (CLS). Clean natural look when empty.
         ============================================================ */}
-        <section aria-labelledby="featured-tools-heading" className="py-14 px-4">
-          <div className="max-w-7xl mx-auto">
-            <div className="mb-8">
-              <h2
-                id="featured-tools-heading"
-                className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white tracking-tight"
-              >
-                Featured Tools
-              </h2>
-              <p className="mt-1.5 text-sm sm:text-base text-slate-600 dark:text-slate-400">
-                Highlighted utilities optimized for speed, precision, and privacy.
+        <section aria-label="Sponsored Advertisement" className="py-8 px-4">
+          <div className="max-w-4xl mx-auto">
+            <div
+              className="w-full min-h-[90px] max-h-[110px] rounded-2xl border border-slate-200/80 dark:border-slate-800/80 bg-slate-50/60 dark:bg-slate-850/40 p-4 flex flex-col items-center justify-center text-center shadow-xs transition-colors"
+            >
+              <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-1">
+                Advertisement
+              </span>
+              <p className="text-xs text-slate-400 dark:text-slate-500 font-medium">
+                Sponsor & Community Ad Placement Slot
               </p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {CANONICAL_TOOLS.filter((t) => t.featured).map((tool) => {
-                const IconComp = tool.icon;
-                return (
-                  <div
-                    key={`featured-${tool.id}`}
-                    className="p-6 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white dark:bg-slate-800/90 shadow-xs hover:shadow-lg transition-all flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-                          {tool.category}
-                        </span>
-                        <span
-                          className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
-                            tool.isLive
-                              ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
-                              : "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400"
-                          }`}
-                        >
-                          {tool.badge}
-                        </span>
-                      </div>
-                      <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-1.5">
-                        {tool.name}
-                      </h3>
-                      <p className="text-sm text-slate-600 dark:text-slate-400">
-                        {tool.desc}
-                      </p>
-                    </div>
-
-                    <div className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-700/60">
-                      {tool.isLive ? (
-                        <Link
-                          href={tool.link}
-                          className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800"
-                        >
-                          <span>Launch Tool</span>
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </Link>
-                      ) : (
-                        <span className="text-xs font-semibold text-slate-400">
-                          Scheduled for Release
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
             </div>
           </div>
         </section>
@@ -967,13 +810,13 @@ export function HomeView() {
             <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 mb-6">
               Search Rootixa and get started in seconds.
             </p>
-            <button
-              onClick={handleFocusSearch}
+            <Link
+              href="/tools"
               className="inline-flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-7 py-3 rounded-full font-bold text-sm shadow-md shadow-indigo-600/20 hover:shadow-indigo-600/40 transition-all cursor-pointer"
             >
-              <Search className="w-4 h-4" />
+              <LayoutGrid className="w-4 h-4" />
               <span>Explore All Tools</span>
-            </button>
+            </Link>
           </div>
         </section>
 
@@ -1036,15 +879,16 @@ export function HomeView() {
               </h4>
               <ul className="space-y-2.5 text-sm text-slate-500 dark:text-slate-400 font-medium">
                 <li>
-                  <Link
+                  <ToolLink
                     href="/qr-code"
+                    toolName="QR Code Generator"
                     className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center gap-1.5"
                   >
                     <span>QR Code Generator</span>
                     <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[9px] px-1.5 py-0.5 rounded-full font-bold">
                       Live
                     </span>
-                  </Link>
+                  </ToolLink>
                 </li>
                 <li>
                   <a
@@ -1089,6 +933,14 @@ export function HomeView() {
                   >
                     Popular Tools
                   </a>
+                </li>
+                <li>
+                  <Link
+                    href="/tools"
+                    className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                  >
+                    All Tools
+                  </Link>
                 </li>
                 <li>
                   <a
