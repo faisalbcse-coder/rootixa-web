@@ -8,8 +8,9 @@ import {
   UserCheck, MapPin, Calendar, Share2, Smartphone, Download, CheckCircle, 
   ArrowLeft, ImagePlus, Trash2, X, Send, Sliders, Settings, Zap, 
   Grid, Printer, AlertTriangle, ShieldCheck, Sparkles, Check, Info,
-  RotateCcw, Palette, Layers, Eye, Compass, SunDim
+  RotateCcw, Palette, Layers, Eye, Compass, SunDim, Barcode, QrCode
 } from 'lucide-react';
+import { BarcodeGenerator } from '@/components/barcode/barcode-generator';
 import {
   buildQRPayload,
   checkPayloadCapacity,
@@ -158,6 +159,8 @@ function PresetThumbnail({ preset }) {
 }
 
 export default function QRCodeGenerator() {
+  const [studioMode, setStudioMode] = useState('qr'); // 'qr' | 'barcode'
+  const [barcodeExportCallback, setBarcodeExportCallback] = useState(null);
   const [activeTab, setActiveTab] = useState('text');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [customizeTab, setCustomizeTab] = useState('styles');
@@ -570,13 +573,33 @@ export default function QRCodeGenerator() {
     setTimeout(() => setIsDownloaded(false), 3000);
   };
 
+  const initiateBarcodeDownload = (exportFn) => {
+    if (isSubscribed) {
+      exportFn();
+    } else if (downloadCount >= 2) {
+      setBarcodeExportCallback(() => exportFn);
+      setShowModal(true);
+    } else {
+      exportFn();
+      const newCount = downloadCount + 1;
+      setDownloadCount(newCount);
+      localStorage.setItem('qr_dl_count', newCount);
+    }
+  };
+
   const handleEmailSubmit = async () => {
     if (!userEmail || !userEmail.includes('@')) {
       return;
     }
     localStorage.setItem('qr_user_subscribed', 'true');
     setIsSubscribed(true);
-    await executeDownload(false);
+    setShowModal(false);
+    if (barcodeExportCallback) {
+      barcodeExportCallback();
+      setBarcodeExportCallback(null);
+    } else {
+      await executeDownload(false);
+    }
   };
 
   const blobToDataUrl = (blob) => new Promise((resolve, reject) => {
@@ -906,8 +929,8 @@ export default function QRCodeGenerator() {
             <span className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
               Rootixa<span className="text-indigo-600">.</span>
             </span>
-            <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100 hidden sm:inline-block">
-              QR Studio
+            <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-md border border-indigo-100 hidden sm:inline-block">
+              QR & Barcode Studio
             </span>
           </div>
         </div>
@@ -919,28 +942,73 @@ export default function QRCodeGenerator() {
           <div>
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-[11px] font-bold mb-2 shadow-2xs">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Phase 3 &bull; Advanced QR Design & Branding Studio</span>
+              <span>Professional QR & Barcode Generation Suite</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900">
-              Professional QR Studio
+              Professional QR & Barcode Studio
             </h1>
-            <p className="mt-1 text-xs sm:text-sm text-slate-500">
-              Design production-grade branded QR codes with gradients, custom eye frames, logos, and real-time scan safety intelligence.
+            <p className="mt-1 text-xs sm:text-sm text-slate-500 max-w-3xl leading-relaxed">
+              Create production-ready QR codes and barcodes with powerful customization, live preview, scan validation, and flexible export options.
             </p>
           </div>
 
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-xs">
               <ShieldCheck className="w-4 h-4 text-emerald-600" />
-              <span>ISO/IEC 18004 Standard</span>
+              <span>{studioMode === 'qr' ? 'ISO/IEC 18004 Standard' : 'GS1 & ISO/IEC Standards'}</span>
             </span>
           </div>
         </div>
+
+        {/* 2. PROMINENT QR / BARCODE MODE SWITCHER */}
+        <div className="mt-6 flex items-center justify-between flex-wrap gap-4">
+          <div className="inline-flex p-1.5 bg-slate-200/70 rounded-2xl border border-slate-300/60 shadow-inner">
+            <button
+              type="button"
+              onClick={() => setStudioMode('qr')}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
+                studioMode === 'qr'
+                  ? 'bg-white text-indigo-600 shadow-md shadow-slate-300/40'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <QrCode className="w-4 h-4" />
+              <span>QR Code</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setStudioMode('barcode')}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
+                studioMode === 'barcode'
+                  ? 'bg-white text-indigo-600 shadow-md shadow-slate-300/40'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Barcode className="w-4 h-4" />
+              <span>Barcode</span>
+            </button>
+          </div>
+
+          <p className="text-xs text-slate-400 font-medium hidden sm:block">
+            {studioMode === 'qr' 
+              ? 'Currently editing: Branded QR Code generator' 
+              : 'Currently editing: Standards-compliant Barcode generator'}
+          </p>
+        </div>
       </div>
 
-      {/* Main Two-Column Layout */}
+      {/* Main Workspace Layout */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 pb-16">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+        {studioMode === 'barcode' ? (
+          <BarcodeGenerator
+            isSubscribed={isSubscribed}
+            downloadCount={downloadCount}
+            onInitiateDownload={initiateBarcodeDownload}
+            isExporting={isExporting}
+            setIsExporting={setIsExporting}
+          />
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
           
           {/* ========================================================= */}
           {/* LEFT CONFIGURATION PANEL (7 cols)                         */}
@@ -2767,6 +2835,7 @@ export default function QRCodeGenerator() {
           </div>
           
         </div>
+        )}
       </main>
     </div>
   );

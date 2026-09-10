@@ -419,6 +419,7 @@ export function ToolsView() {
                     "bg-remover": "bg-violet-50 dark:bg-violet-950/60 text-violet-600 dark:text-violet-400",
                     "pdf-converter": "bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400",
                     "invoice-generator": "bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400",
+                    "lorem-ipsum": "bg-teal-50 dark:bg-teal-950/60 text-teal-600 dark:text-teal-400",
                   };
                   const iconStyle = pastelThemes[tool.id] || "bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400";
 
@@ -601,6 +602,18 @@ export function ToolsView() {
                     className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center gap-1.5"
                   >
                     <span>QR Code Generator</span>
+                    <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[9px] px-1.5 py-0.5 rounded-full font-bold">
+                      Live
+                    </span>
+                  </ToolLink>
+                </li>
+                <li>
+                  <ToolLink
+                    href="/lorem-ipsum"
+                    toolName="Lorem Ipsum Generator"
+                    className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center gap-1.5"
+                  >
+                    <span>Lorem Ipsum Generator</span>
                     <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[9px] px-1.5 py-0.5 rounded-full font-bold">
                       Live
                     </span>

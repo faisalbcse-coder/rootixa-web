@@ -4,6 +4,10 @@
       "status": "live",
       "maintenanceNotice": ""
     },
+    "lorem-ipsum": {
+      "status": "live",
+      "maintenanceNotice": ""
+    },
     "cv-builder": {
       "status": "development",
       "maintenanceNotice": ""
