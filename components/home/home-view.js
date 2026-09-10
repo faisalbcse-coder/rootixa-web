@@ -903,6 +903,30 @@ export function HomeView() {
                   </ToolLink>
                 </li>
                 <li>
+                  <ToolLink
+                    href="/image-resizer"
+                    toolName="Image Resizer & Crop"
+                    className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center gap-1.5"
+                  >
+                    <span>Image Resizer</span>
+                    <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[9px] px-1.5 py-0.5 rounded-full font-bold">
+                      Live
+                    </span>
+                  </ToolLink>
+                </li>
+                <li>
+                  <ToolLink
+                    href="/ai-background-remover"
+                    toolName="AI Background Remover & Enhancer"
+                    className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center gap-1.5"
+                  >
+                    <span>AI Background Remover</span>
+                    <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[9px] px-1.5 py-0.5 rounded-full font-bold">
+                      Live
+                    </span>
+                  </ToolLink>
+                </li>
+                <li>
                   <a
                     href="#popular-tools"
                     onClick={() => handleCategorySelect("image")}
