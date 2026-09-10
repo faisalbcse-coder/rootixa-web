@@ -17,6 +17,7 @@ import {
   ShieldCheck,
   MessageSquare,
   Heart,
+  Lightbulb,
 } from "lucide-react";
 import { CANONICAL_TOOLS } from "@/lib/tools/data";
 import { searchToolsSemantic } from "@/lib/tools/semantic-search";
@@ -514,18 +515,31 @@ export function ToolsView() {
               </div>
             )}
 
-            {/* Gentle Feedback Link */}
-            <div className="mt-14 text-center">
-              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-                Need a tool that isn&apos;t here yet?{" "}
+            {/* Subtle Tool Suggestion Card */}
+            <div className="mt-14 max-w-2xl mx-auto">
+              <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-gradient-to-r from-slate-50/90 via-indigo-50/40 to-slate-50/90 dark:from-slate-900/80 dark:via-indigo-950/25 dark:to-slate-900/80 p-5 sm:p-6 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left transition-all hover:border-indigo-200 dark:hover:border-indigo-800/80">
+                <div className="flex flex-col sm:flex-row items-center gap-3.5">
+                  <div className="w-11 h-11 rounded-2xl bg-indigo-100/80 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 shadow-2xs">
+                    <Lightbulb className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+                      Need a tool that isn&apos;t here yet?
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      Tell us what utility or converter you&apos;d like to see next.
+                    </p>
+                  </div>
+                </div>
+
                 <Link
                   href="/feedback"
-                  className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline inline-flex items-center gap-1"
+                  className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-white dark:bg-slate-800 hover:bg-indigo-600 dark:hover:bg-indigo-600 text-slate-800 dark:text-slate-200 hover:text-white dark:hover:text-white border border-slate-200 dark:border-slate-700 hover:border-indigo-600 dark:hover:border-indigo-600 text-xs sm:text-sm font-semibold transition-all shadow-xs shrink-0 cursor-pointer group"
                 >
-                  <span>Suggest a tool</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
+                  <span>Suggest a Tool</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
                 </Link>
-              </p>
+              </div>
             </div>
           </div>
         </section>
