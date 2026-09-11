@@ -162,6 +162,8 @@ export function CVBuilderPage() {
             <CVPreview
               cvData={cvData}
               activeTemplateName={activeTemplate.name}
+              selectedTemplateId={activeTemplate.id}
+              onSelectTemplate={(templateId) => setTemplate(templateId)}
               onOpenTemplates={() => setIsTemplateModalOpen(true)}
             />
           </div>

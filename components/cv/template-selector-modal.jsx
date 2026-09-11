@@ -14,6 +14,7 @@ import {
 import { TEMPLATES } from "./templates/template-registry";
 import { exportCvToPdf } from "@/lib/cv/cv-pdf-exporter";
 import { createSampleCV } from "@/lib/cv/cv-types";
+import { getPreviewCVData } from "./templates/template-helpers";
 
 export function TemplateSelectorModal({
   isOpen,
@@ -76,11 +77,8 @@ export function TemplateSelectorModal({
   const currentTemplate = TEMPLATES[currentIndex] || TEMPLATES[0];
   const TemplateComponent = currentTemplate.component;
 
-  // If user CV is blank, use sample CV so they see a full, realistic design
-  const previewData =
-    cvData?.personal?.fullName || cvData?.experience?.length
-      ? cvData
-      : createSampleCV();
+  // Always display a rich, formatted design so every template's styling is clearly visible
+  const previewData = useMemo(() => getPreviewCVData(cvData), [cvData]);
 
   const handleApply = () => {
     onSelectTemplate(currentTemplate.id);

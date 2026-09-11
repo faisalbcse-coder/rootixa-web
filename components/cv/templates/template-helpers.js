@@ -1,4 +1,5 @@
 import React from "react";
+import { createSampleCV } from "@/lib/cv/cv-types";
 
 export function getFontCss(fontId) {
   const map = {
@@ -110,7 +111,7 @@ export function checkHasContent(cvData = {}) {
     projects = [],
     certifications = [],
     languages = [],
-  } = cvData;
+  } = cvData || {};
 
   return {
     summary: Boolean(summary?.trim()),
@@ -120,5 +121,66 @@ export function checkHasContent(cvData = {}) {
     projects: projects?.some((p) => p.name?.trim() || p.description?.trim()),
     certifications: certifications?.some((c) => c.name?.trim() || c.issuer?.trim()),
     languages: languages?.some((l) => l.language?.trim()),
+  };
+}
+
+/**
+ * Creates rich preview data for CV document display.
+ * If user has not yet entered content for a section, fills it with realistic sample
+ * data so the user can immediately appreciate the template's typography, layout,
+ * and design instead of seeing a broken blank white box.
+ */
+export function getPreviewCVData(userCvData) {
+  const sample = createSampleCV();
+  if (!userCvData) return sample;
+
+  const hasContent = checkHasContent(userCvData);
+  const hasUserFullName = Boolean(userCvData.personal?.fullName?.trim());
+  const hasAnySection = Object.values(hasContent).some(Boolean);
+
+  // If user CV is completely fresh/blank, show full sample template preview
+  if (!hasUserFullName && !hasAnySection) {
+    return {
+      ...sample,
+      design: userCvData.design || sample.design,
+      settings: userCvData.settings || sample.settings,
+      sectionOrder: userCvData.sectionOrder?.length ? userCvData.sectionOrder : sample.sectionOrder,
+      sectionVisibility: userCvData.sectionVisibility || sample.sectionVisibility,
+      sectionTitles: userCvData.sectionTitles || sample.sectionTitles,
+      _isSamplePreview: true,
+    };
+  }
+
+  // If user has partially filled their CV, keep their real data, and fill empty sections
+  // with sample content so the template structure is never empty
+  return {
+    ...sample,
+    ...userCvData,
+    meta: userCvData.meta || sample.meta,
+    personal: {
+      ...sample.personal,
+      ...userCvData.personal,
+      fullName: userCvData.personal?.fullName?.trim() || sample.personal.fullName,
+      professionalTitle: userCvData.personal?.professionalTitle?.trim() || sample.personal.professionalTitle,
+      email: userCvData.personal?.email?.trim() || sample.personal.email,
+      phone: userCvData.personal?.phone?.trim() || sample.personal.phone,
+      location: userCvData.personal?.location?.trim() || sample.personal.location,
+      website: userCvData.personal?.website?.trim() || sample.personal.website,
+      linkedin: userCvData.personal?.linkedin?.trim() || sample.personal.linkedin,
+      github: userCvData.personal?.github?.trim() || sample.personal.github,
+    },
+    summary: hasContent.summary ? userCvData.summary : sample.summary,
+    experience: hasContent.experience ? userCvData.experience : sample.experience,
+    education: hasContent.education ? userCvData.education : sample.education,
+    skills: hasContent.skills ? userCvData.skills : sample.skills,
+    projects: hasContent.projects ? userCvData.projects : sample.projects,
+    certifications: hasContent.certifications ? userCvData.certifications : sample.certifications,
+    languages: hasContent.languages ? userCvData.languages : sample.languages,
+    sectionOrder: userCvData.sectionOrder?.length ? userCvData.sectionOrder : sample.sectionOrder,
+    sectionVisibility: userCvData.sectionVisibility || sample.sectionVisibility,
+    sectionTitles: userCvData.sectionTitles || sample.sectionTitles,
+    design: userCvData.design || sample.design,
+    settings: userCvData.settings || sample.settings,
+    _isSamplePreview: false,
   };
 }
