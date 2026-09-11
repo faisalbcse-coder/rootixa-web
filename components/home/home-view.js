@@ -71,29 +71,30 @@ export function HomeView() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("all");
   const [openFaq, setOpenFaq] = useState("faq-1");
-  const [darkMode, setDarkMode] = useState(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      const savedTheme = localStorage.getItem("rootixa_theme");
-      if (savedTheme) return savedTheme === "dark";
-      return window.matchMedia("(prefers-color-scheme: dark)").matches;
-    } catch {
-      return false;
-    }
-  });
+  const [mounted, setMounted] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
   const searchInputRef = useRef(null);
 
   useEffect(() => {
+    setMounted(true);
     try {
-      document.documentElement.classList.toggle("dark", darkMode);
-    } catch {
-      // Ignore DOM toggle error
-    }
+      const savedTheme = localStorage.getItem("rootixa_theme");
+      const isDark = savedTheme ? savedTheme === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      setDarkMode(isDark);
+      document.documentElement.classList.toggle("dark", isDark);
+    } catch {}
 
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
-  }, [darkMode]);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    try {
+      document.documentElement.classList.toggle("dark", darkMode);
+    } catch {}
+  }, [darkMode, mounted]);
 
   // Keyboard shortcut (Cmd/Ctrl + K or /) to focus search
   useEffect(() => {
@@ -156,7 +157,7 @@ export function HomeView() {
     <div
       suppressHydrationWarning
       className={`min-h-screen font-sans flex flex-col transition-colors duration-300 ${
-        darkMode ? "dark bg-[#090E17] text-slate-200" : "bg-white text-slate-800"
+        mounted && darkMode ? "dark bg-[#090E17] text-slate-200" : "bg-white text-slate-800"
       }`}
     >
       {/* ============================================================
@@ -227,10 +228,10 @@ export function HomeView() {
               </div>
               <div
                 className={`w-6 h-6 bg-white dark:bg-slate-900 rounded-full shadow-md transform transition-transform duration-300 ease-out flex items-center justify-center z-10 ${
-                  darkMode ? "translate-x-6" : "translate-x-0"
+                  mounted && darkMode ? "translate-x-6" : "translate-x-0"
                 }`}
               >
-                {darkMode ? (
+                {mounted && darkMode ? (
                   <Moon className="w-3 h-3 text-indigo-500" />
                 ) : (
                   <Sun className="w-3 h-3 text-amber-500" />
