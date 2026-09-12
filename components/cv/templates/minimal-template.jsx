@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { renderProfilePhoto } from "./template-helpers";
 
 function getFontCss(fontId) {
   const map = {
@@ -145,18 +146,7 @@ export function MinimalTemplate({ cvData }) {
 
           {photo?.enabled && photo?.url && (
             <div className="shrink-0">
-              <img
-                src={photo.url}
-                alt={personal.fullName || "Profile"}
-                className={`w-18 h-18 object-cover border shadow-2xs ${
-                  photo.shape === "circle"
-                    ? "rounded-full"
-                    : photo.shape === "rounded"
-                    ? "rounded-xl"
-                    : "rounded-none"
-                }`}
-                style={{ borderColor: "#e2e8f0" }}
-              />
+              {renderProfilePhoto(photo, photo.shape, 76, personal.fullName, "#e2e8f0")}
             </div>
           )}
         </div>

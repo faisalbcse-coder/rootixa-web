@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { Mail, Phone, MapPin, Globe, Link as LinkIcon, FolderGit2 } from "lucide-react";
+import { renderProfilePhoto } from "./template-helpers";
 
 function getFontCss(fontId) {
   const map = {
@@ -147,18 +148,7 @@ export function ModernTemplate({ cvData }) {
           {/* Profile Photo if enabled */}
           {photo?.enabled && photo?.url && (
             <div className="shrink-0">
-              <img
-                src={photo.url}
-                alt={personal.fullName || "Profile"}
-                className={`w-20 h-20 object-cover border-2 shadow-xs ${
-                  photo.shape === "circle"
-                    ? "rounded-full"
-                    : photo.shape === "rounded"
-                    ? "rounded-2xl"
-                    : "rounded-none"
-                }`}
-                style={{ borderColor: accent }}
-              />
+              {renderProfilePhoto(photo, photo.shape, 80, personal.fullName, accent)}
             </div>
           )}
         </div>

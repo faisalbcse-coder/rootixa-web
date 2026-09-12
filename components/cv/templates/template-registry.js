@@ -28,7 +28,7 @@ export const TEMPLATES = [
     categoryLabel: "ATS & Academic",
     badge: "Ivy League",
     fontFamily: "Georgia",
-    accentColor: "#0f172a",
+    accentColor: "#A51C30",
     component: HarvardTemplate,
   },
   {

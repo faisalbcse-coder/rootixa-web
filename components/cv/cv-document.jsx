@@ -43,12 +43,9 @@ export function CVDocument({ cvData, className = "" }) {
             size: A4 portrait;
             margin: 0;
           }
-          *, html, body {
+          html, body {
             overflow: visible !important;
             height: auto !important;
-            max-height: none !important;
-          }
-          html, body {
             background: #ffffff !important;
             color: #000000 !important;
             margin: 0 !important;
@@ -57,29 +54,34 @@ export function CVDocument({ cvData, className = "" }) {
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
-          /* Hide the rest of the application interface during print */
-          body * {
-            visibility: hidden !important;
+          /* Hide screen UI chrome during native print */
+          header, nav, aside, footer, button, .no-print, .cv-page-guide {
+            display: none !important;
           }
-          /* Make ONLY the CV document and its children visible */
-          #cv-document-root,
-          #cv-document-root * {
-            visibility: visible !important;
+          /* Strict Profile Photo Constraints in Print */
+          .cv-profile-photo-wrapper {
+            overflow: hidden !important;
+            display: inline-block !important;
+            flex-shrink: 0 !important;
+            box-sizing: border-box !important;
           }
-          #cv-document-root {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
+          .cv-profile-photo-wrapper img,
+          .cv-profile-photo-img {
             width: 100% !important;
+            height: 100% !important;
+            max-width: 100% !important;
+            max-height: 100% !important;
+            min-width: 100% !important;
             min-height: 100% !important;
-            box-shadow: none !important;
-            border: none !important;
+            object-fit: cover !important;
+            display: block !important;
             margin: 0 !important;
             padding: 0 !important;
-            transform: none !important;
           }
-          header, nav, aside, footer, button, .no-print, .cv-page-guide, [role="dialog"] {
-            display: none !important;
+          /* Ensure links do not render with browser default blue underlines */
+          a {
+            color: inherit !important;
+            text-decoration: none !important;
           }
           /* Prevent awkward page breaks inside items */
           section, .break-inside-avoid {

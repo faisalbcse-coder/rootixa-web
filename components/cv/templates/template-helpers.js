@@ -56,27 +56,63 @@ export function renderFormattedDescription(text, fontSize = "10px", paragraphGap
   );
 }
 
-export function renderProfilePhoto(photo, shape = "circle", size = 80, alt = "Profile Photo") {
+export function renderProfilePhoto(
+  photo,
+  shape = "circle",
+  size = 80,
+  alt = "Profile Photo",
+  borderColor = "transparent"
+) {
   if (!photo || !photo.enabled || !photo.url) return null;
 
-  const shapeClasses = {
-    circle: "rounded-full",
-    rounded: "rounded-2xl",
-    square: "rounded-md",
+  const shapeRadiusMap = {
+    circle: "9999px",
+    rounded: "16px",
+    square: "6px",
   };
 
-  const roundedCls = shapeClasses[shape] || shapeClasses.circle;
+  const borderRadius = shapeRadiusMap[shape] || "9999px";
+  const borderCss =
+    borderColor && borderColor !== "transparent"
+      ? `2px solid ${borderColor}`
+      : "2px solid rgba(255, 255, 255, 0.85)";
 
   return (
     <div
-      className={`shrink-0 overflow-hidden border-2 border-white/80 shadow-xs bg-slate-100 ${roundedCls}`}
-      style={{ width: `${size}px`, height: `${size}px` }}
+      className="cv-profile-photo-wrapper shrink-0"
+      style={{
+        width: `${size}px`,
+        height: `${size}px`,
+        minWidth: `${size}px`,
+        minHeight: `${size}px`,
+        maxWidth: `${size}px`,
+        maxHeight: `${size}px`,
+        borderRadius,
+        overflow: "hidden",
+        border: borderCss,
+        backgroundColor: "#f1f5f9",
+        boxSizing: "border-box",
+        display: "inline-block",
+        position: "relative",
+      }}
     >
       <img
         src={photo.url}
-        alt={alt}
-        className="w-full h-full object-cover"
-        style={{ display: "block" }}
+        alt={alt || "Profile Photo"}
+        className="cv-profile-photo-img"
+        style={{
+          width: "100%",
+          height: "100%",
+          minWidth: "100%",
+          minHeight: "100%",
+          maxWidth: "100%",
+          maxHeight: "100%",
+          objectFit: "cover",
+          borderRadius,
+          display: "block",
+          margin: 0,
+          padding: 0,
+        }}
       />
     </div>
   );
@@ -111,6 +147,11 @@ export function checkHasContent(cvData = {}) {
     projects = [],
     certifications = [],
     languages = [],
+    awards = [],
+    publications = [],
+    volunteer = [],
+    references = {},
+    customSections = [],
   } = cvData || {};
 
   return {
@@ -121,6 +162,11 @@ export function checkHasContent(cvData = {}) {
     projects: projects?.some((p) => p.name?.trim() || p.description?.trim()),
     certifications: certifications?.some((c) => c.name?.trim() || c.issuer?.trim()),
     languages: languages?.some((l) => l.language?.trim()),
+    awards: awards?.some((a) => a.name?.trim()),
+    publications: publications?.some((p) => p.title?.trim()),
+    volunteer: volunteer?.some((v) => v.role?.trim() || v.organization?.trim()),
+    references: Boolean(references?.availableUponRequest || references?.items?.length > 0),
+    customSections: customSections?.some((c) => c.title?.trim() && c.content?.trim()),
   };
 }
 

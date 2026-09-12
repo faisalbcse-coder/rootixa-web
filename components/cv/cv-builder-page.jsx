@@ -2,14 +2,16 @@
 
 import { useState, useMemo } from "react";
 import { useCVState } from "@/lib/cv/use-cv-state";
-import { CVHeader } from "./cv-header";
-import { CVEditor } from "./cv-editor";
-import { CVPreview } from "./cv-preview";
-import { TemplateSelectorModal } from "./template-selector-modal";
+import { CVWizardHeader } from "./wizard/cv-wizard-header";
+import { StepPersonal } from "./wizard/step-personal";
+import { StepExperiences } from "./wizard/step-experiences";
+import { StepTemplate } from "./wizard/step-template";
+import { CVPreviewModal } from "./wizard/cv-preview-modal";
+import { CVDocument } from "./cv-document";
 import { getTemplate } from "./templates/template-registry";
 import { exportCvToPdf, printCv } from "@/lib/cv/cv-pdf-exporter";
 import { generateSanitizedFilename } from "@/lib/cv/export-utils";
-import { CheckCircle2, Loader2, AlertCircle } from "lucide-react";
+import { CheckCircle2, Loader2, AlertCircle, Eye } from "lucide-react";
 
 export function CVBuilderPage() {
   const {
@@ -17,9 +19,6 @@ export function CVBuilderPage() {
     setTemplate,
     updatePhoto,
     removePhoto,
-    updateSectionTitle,
-    reorderSections,
-    updateMeta,
     updatePersonal,
     updateSummary,
     addExperience,
@@ -30,7 +29,6 @@ export function CVBuilderPage() {
     removeEducation,
     addSkill,
     removeSkill,
-    clearSkills,
     addProject,
     updateProject,
     removeProject,
@@ -40,25 +38,40 @@ export function CVBuilderPage() {
     addLanguage,
     updateLanguage,
     removeLanguage,
-    moveSection,
-    toggleSectionVisibility,
+    addAward,
+    updateAward,
+    removeAward,
+    addPublication,
+    updatePublication,
+    removePublication,
+    addVolunteer,
+    updateVolunteer,
+    removeVolunteer,
+    updateReferences,
+    addReference,
+    updateReference,
+    removeReference,
+    addCustomSection,
+    updateCustomSection,
+    removeCustomSection,
     resetCV,
     loadSample,
+    updateDesign,
   } = useCVState();
 
-  // Mobile/Tablet active view: "editor" | "preview"
-  const [activeView, setActiveView] = useState("editor");
+  // ─── 3-Step Wizard Navigation (1: Personal, 2: Experiences, 3: Template) ───
+  const [currentStep, setCurrentStep] = useState(1);
 
-  // Template selector modal visibility
-  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+  // ─── Quick Preview Modal State ───
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
 
-  // PDF Generation State & Toast
+  // ─── PDF Generation State & Toast ───
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [downloadToast, setDownloadToast] = useState(null);
 
   // Active template metadata
   const activeTemplate = useMemo(() => {
-    return getTemplate(cvData.design?.templateId || cvData.settings?.templateId);
+    return getTemplate(cvData.design?.templateId || cvData.settings?.templateId || "harvard");
   }, [cvData.design?.templateId, cvData.settings?.templateId]);
 
   // Direct, clean PDF download handler
@@ -71,7 +84,7 @@ export function CVBuilderPage() {
     });
 
     try {
-      const fileName = generateSanitizedFilename(cvData.personal?.fullName);
+      const fileName = generateSanitizedFilename(cvData.personal?.fullName || "Rootixa_Resume");
       await exportCvToPdf({
         elementId: "cv-document-root",
         fileName,
@@ -98,92 +111,133 @@ export function CVBuilderPage() {
     }
   };
 
+  const handleStepChange = (stepId) => {
+    setCurrentStep(stepId);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
   return (
-    <div className="min-h-screen lg:h-screen flex flex-col bg-slate-100/70 dark:bg-[#070B12] text-slate-800 dark:text-slate-100 transition-colors lg:overflow-hidden">
-      {/* ─── Clean Header ─── */}
-      <CVHeader
-        documentTitle={cvData.meta?.title}
-        onTitleChange={(title) => updateMeta("title", title)}
+    <div className="min-h-screen flex flex-col bg-slate-100/60 dark:bg-[#070B12] text-slate-800 dark:text-slate-100 transition-colors selection:bg-indigo-500/20">
+      {/* ─── 1. Top Rootixa Branded Stepper Header ─── */}
+      <CVWizardHeader
+        currentStep={currentStep}
+        onStepClick={handleStepChange}
+        onOpenPreview={() => setIsPreviewModalOpen(true)}
+        onLoadSample={loadSample}
         onReset={resetCV}
-        activeView={activeView}
-        onViewToggle={setActiveView}
+      />
+
+      {/* ─── 2. Main Wizard Step Content Area ─── */}
+      <main className="flex-1 w-full pb-16">
+        {/* Step 1: Personal Details */}
+        {currentStep === 1 && (
+          <StepPersonal
+            personal={cvData.personal}
+            onChange={updatePersonal}
+            photo={cvData.design?.photo}
+            onPhotoChange={updatePhoto}
+            onPhotoRemove={removePhoto}
+            onNext={() => handleStepChange(2)}
+          />
+        )}
+
+        {/* Step 2: Experiences & Qualifications */}
+        {currentStep === 2 && (
+          <StepExperiences
+            cvData={cvData}
+            updateSummary={updateSummary}
+            addExperience={addExperience}
+            updateExperience={updateExperience}
+            removeExperience={removeExperience}
+            addEducation={addEducation}
+            updateEducation={updateEducation}
+            removeEducation={removeEducation}
+            addSkill={addSkill}
+            removeSkill={removeSkill}
+            addProject={addProject}
+            updateProject={updateProject}
+            removeProject={removeProject}
+            addCertification={addCertification}
+            updateCertification={updateCertification}
+            removeCertification={removeCertification}
+            addLanguage={addLanguage}
+            updateLanguage={updateLanguage}
+            removeLanguage={removeLanguage}
+            addAward={addAward}
+            updateAward={updateAward}
+            removeAward={removeAward}
+            addPublication={addPublication}
+            updatePublication={updatePublication}
+            removePublication={removePublication}
+            addVolunteer={addVolunteer}
+            updateVolunteer={updateVolunteer}
+            removeVolunteer={removeVolunteer}
+            updateReferences={updateReferences}
+            addReference={addReference}
+            updateReference={updateReference}
+            removeReference={removeReference}
+            addCustomSection={addCustomSection}
+            updateCustomSection={updateCustomSection}
+            removeCustomSection={removeCustomSection}
+            onNext={() => handleStepChange(3)}
+            onPrev={() => handleStepChange(1)}
+          />
+        )}
+
+        {/* Step 3: Select Template & Download */}
+        {currentStep === 3 && (
+          <StepTemplate
+            cvData={cvData}
+            selectedTemplateId={activeTemplate.id}
+            onSelectTemplate={(templateId) => setTemplate(templateId)}
+            onColorChange={(hex) => updateDesign("colors", "accent", hex)}
+            onDownloadPdf={handleDownloadPdf}
+            isDownloadingPdf={isDownloadingPdf}
+            onPrev={() => handleStepChange(2)}
+            onOpenFullPreview={() => setIsPreviewModalOpen(true)}
+          />
+        )}
+      </main>
+
+      {/* ─── 3. Floating Quick Preview Button (Visible on Step 1 & 2) ─── */}
+      {currentStep !== 3 && (
+        <div className="fixed bottom-6 right-6 z-40">
+          <button
+            type="button"
+            onClick={() => setIsPreviewModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold shadow-xl shadow-slate-900/20 dark:shadow-white/10 hover:scale-105 active:scale-95 transition-all cursor-pointer border border-slate-700/50 dark:border-slate-200"
+            title="Preview formatted CV anytime"
+          >
+            <Eye className="w-4 h-4 text-indigo-400 dark:text-indigo-600" />
+            <span>Preview CV</span>
+          </button>
+        </div>
+      )}
+
+      {/* ─── 4. Live A4 Document Preview Modal (Clean Inspection Anytime) ─── */}
+      <CVPreviewModal
+        isOpen={isPreviewModalOpen}
+        onClose={() => setIsPreviewModalOpen(false)}
+        cvData={cvData}
         onDownloadPdf={handleDownloadPdf}
         isDownloadingPdf={isDownloadingPdf}
       />
 
-      {/* ─── Main Clean 2-Column Workspace (Independent Scroll) ─── */}
-      <main className="flex-1 max-w-[1700px] w-full mx-auto p-3 sm:p-4 lg:p-5 min-h-0 lg:overflow-hidden">
-        <div className="flex flex-col lg:flex-row gap-5 lg:h-full lg:min-h-0 items-stretch">
-          {/* ──── Left Column: Clean Guided Form (Scrolls Independently) ──── */}
-          <div
-            className={`w-full lg:w-[480px] xl:w-[520px] shrink-0 lg:h-full lg:overflow-y-auto pr-0 lg:pr-1 pb-6 transition-all ${
-              activeView === "editor" ? "block" : "hidden lg:block"
-            }`}
-          >
-            <CVEditor
-              cvData={cvData}
-              updatePersonal={updatePersonal}
-              updateSummary={updateSummary}
-              addExperience={addExperience}
-              updateExperience={updateExperience}
-              removeExperience={removeExperience}
-              addEducation={addEducation}
-              updateEducation={updateEducation}
-              removeEducation={removeEducation}
-              addSkill={addSkill}
-              removeSkill={removeSkill}
-              clearSkills={clearSkills}
-              addProject={addProject}
-              updateProject={updateProject}
-              removeProject={removeProject}
-              addCertification={addCertification}
-              updateCertification={updateCertification}
-              removeCertification={removeCertification}
-              addLanguage={addLanguage}
-              updateLanguage={updateLanguage}
-              removeLanguage={removeLanguage}
-              moveSection={moveSection}
-              reorderSections={reorderSections}
-              toggleSectionVisibility={toggleSectionVisibility}
-              updateSectionTitle={updateSectionTitle}
-              loadSample={loadSample}
-              photo={cvData.design?.photo}
-              updatePhoto={updatePhoto}
-              removePhoto={removePhoto}
-            />
-          </div>
-
-          {/* ──── Right Column: Live A4 Document Preview (Scrolls Independently) ──── */}
-          <div
-            className={`flex-1 w-full min-w-0 lg:h-full lg:overflow-hidden transition-all ${
-              activeView === "preview" ? "block" : "hidden lg:block"
-            }`}
-          >
-            <CVPreview
-              cvData={cvData}
-              activeTemplateName={activeTemplate.name}
-              selectedTemplateId={activeTemplate.id}
-              onSelectTemplate={(templateId) => setTemplate(templateId)}
-              onOpenTemplates={() => setIsTemplateModalOpen(true)}
-            />
-          </div>
+      {/* ─── 5. Offscreen Root A4 Document (Only mounted when modal is closed to avoid duplicate IDs) ─── */}
+      {!isPreviewModalOpen && (
+        <div
+          aria-hidden="true"
+          className="fixed -left-[9999px] top-0 pointer-events-none opacity-0 select-none overflow-hidden"
+        >
+          <CVDocument cvData={cvData} />
         </div>
-      </main>
+      )}
 
-      {/* ─── 1-by-1 Template Selector Modal ─── */}
-      <TemplateSelectorModal
-        isOpen={isTemplateModalOpen}
-        onClose={() => setIsTemplateModalOpen(false)}
-        selectedTemplateId={activeTemplate.id}
-        onSelectTemplate={(templateId) => {
-          setTemplate(templateId);
-        }}
-        cvData={cvData}
-      />
-
-      {/* ─── Download Toast Notification ─── */}
+      {/* ─── 6. Download Toast Notification ─── */}
       {downloadToast && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-slate-900/95 dark:bg-white/95 backdrop-blur-md text-white dark:text-slate-900 shadow-2xl text-xs font-bold animate-in slide-in-from-bottom-4 duration-200">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2.5 px-5 py-3 rounded-2xl bg-slate-900/95 dark:bg-white/95 backdrop-blur-md text-white dark:text-slate-900 shadow-2xl text-xs font-bold animate-in slide-in-from-bottom-4 duration-200">
           {downloadToast.type === "loading" && (
             <Loader2 className="w-4 h-4 animate-spin text-indigo-400 dark:text-indigo-600 shrink-0" />
           )}
