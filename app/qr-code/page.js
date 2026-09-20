@@ -8,9 +8,11 @@ import {
   UserCheck, MapPin, Calendar, Share2, Smartphone, Download, CheckCircle, 
   ArrowLeft, ImagePlus, Trash2, X, Send, Sliders, Settings, Zap, 
   Grid, Printer, AlertTriangle, ShieldCheck, Sparkles, Check, Info,
-  RotateCcw, Palette, Layers, Eye, Compass, SunDim, Barcode, QrCode
+  RotateCcw, Palette, Layers, Eye, Compass, SunDim, Barcode, QrCode, Camera
 } from 'lucide-react';
 import { BarcodeGenerator } from '@/components/barcode/barcode-generator';
+import { CodeScanner } from '@/components/scanner/code-scanner';
+import { LabelSheetMaker } from '@/components/print-sheet/label-sheet-maker';
 import {
   buildQRPayload,
   checkPayloadCapacity,
@@ -159,7 +161,11 @@ function PresetThumbnail({ preset }) {
 }
 
 export default function QRCodeGenerator() {
+  const [studioAction, setStudioAction] = useState('generate'); // 'generate' | 'scan' | 'print'
   const [studioMode, setStudioMode] = useState('qr'); // 'qr' | 'barcode'
+  const [printInitialType, setPrintInitialType] = useState('qr');
+  const [lastBarcodeData, setLastBarcodeData] = useState('ROOTIXA-128-PRO');
+  const [lastBarcodeFormat, setLastBarcodeFormat] = useState('CODE128');
   const [barcodeExportCallback, setBarcodeExportCallback] = useState(null);
   const [activeTab, setActiveTab] = useState('text');
   const [selectedCategory, setSelectedCategory] = useState('all');
@@ -891,7 +897,7 @@ export default function QRCodeGenerator() {
             </div>
             <h3 className="text-xl font-bold text-center text-slate-900 mb-2">Unlock Unlimited Exports</h3>
             <p className="text-slate-500 text-xs text-center mb-6 leading-relaxed">
-              You have used your 2 free trial downloads. Enter your email address to unlock unlimited high-resolution QR downloads.
+              Enter your email address to unlock unlimited high-resolution QR and barcode downloads.
             </p>
             <div className="space-y-3">
               <input 
@@ -960,37 +966,74 @@ export default function QRCodeGenerator() {
           </div>
         </div>
 
-        {/* 2. PROMINENT QR / BARCODE MODE SWITCHER */}
+        {/* 2. PROMINENT ACTION (GENERATE vs SCAN) & FORMAT SWITCHER */}
         <div className="mt-6 flex items-center justify-between flex-wrap gap-4">
-          <div className="inline-flex p-1.5 bg-slate-200/70 rounded-2xl border border-slate-300/60 shadow-inner">
-            <button
-              type="button"
-              onClick={() => setStudioMode('qr')}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
-                studioMode === 'qr'
-                  ? 'bg-white text-indigo-600 shadow-md shadow-slate-300/40'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <QrCode className="w-4 h-4" />
-              <span>QR Code</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setStudioMode('barcode')}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
-                studioMode === 'barcode'
-                  ? 'bg-white text-indigo-600 shadow-md shadow-slate-300/40'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Barcode className="w-4 h-4" />
-              <span>Barcode</span>
-            </button>
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Studio Action: Generate Studio vs Real-Time Scanner */}
+            <div className="inline-flex p-1.5 bg-slate-200/70 rounded-2xl border border-slate-300/60 shadow-inner">
+              <button
+                type="button"
+                onClick={() => setStudioAction('generate')}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
+                  studioAction === 'generate'
+                    ? 'bg-white text-indigo-600 shadow-md shadow-slate-300/40'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>Generate</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setStudioAction('scan')}
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
+                  studioAction === 'scan'
+                    ? 'bg-white text-indigo-600 shadow-md shadow-slate-300/40'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Camera className="w-4 h-4" />
+                <span>Scan</span>
+              </button>
+            </div>
+
+            {/* Generator Format Switcher: QR Code vs Barcode (visible in Generate mode) */}
+            {studioAction === 'generate' && (
+              <div className="inline-flex p-1.5 bg-slate-200/70 rounded-2xl border border-slate-300/60 shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => setStudioMode('qr')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
+                    studioMode === 'qr'
+                      ? 'bg-white text-indigo-600 shadow-md shadow-slate-300/40'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <QrCode className="w-4 h-4" />
+                  <span>QR Code</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStudioMode('barcode')}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
+                    studioMode === 'barcode'
+                      ? 'bg-white text-indigo-600 shadow-md shadow-slate-300/40'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Barcode className="w-4 h-4" />
+                  <span>Barcode</span>
+                </button>
+              </div>
+            )}
           </div>
 
           <p className="text-xs text-slate-400 font-medium hidden sm:block">
-            {studioMode === 'qr' 
+            {studioAction === 'print'
+              ? 'Currently active: Multi-label print sheet maker'
+              : studioAction === 'scan'
+              ? 'Currently active: Real-time QR & Barcode scanner'
+              : studioMode === 'qr' 
               ? 'Currently editing: Branded QR Code generator' 
               : 'Currently editing: Standards-compliant Barcode generator'}
           </p>
@@ -999,21 +1042,37 @@ export default function QRCodeGenerator() {
 
       {/* Main Workspace Layout */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 pb-16">
-        {studioMode === 'barcode' ? (
+        {studioAction === 'print' ? (
+          <LabelSheetMaker
+            currentQrPayload={currentPayload}
+            currentBarcodeData={lastBarcodeData}
+            currentBarcodeFormat={lastBarcodeFormat}
+            initialCodeType={printInitialType}
+            onBack={() => setStudioAction('generate')}
+          />
+        ) : studioAction === 'scan' ? (
+          <CodeScanner />
+        ) : studioMode === 'barcode' ? (
           <BarcodeGenerator
             isSubscribed={isSubscribed}
             downloadCount={downloadCount}
             onInitiateDownload={initiateBarcodeDownload}
+            onOpenPrintSheet={(val, fmt) => {
+              setLastBarcodeData(val);
+              setLastBarcodeFormat(fmt);
+              setPrintInitialType('barcode');
+              setStudioAction('print');
+            }}
             isExporting={isExporting}
             setIsExporting={setIsExporting}
           />
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start relative">
           
           {/* ========================================================= */}
-          {/* LEFT CONFIGURATION PANEL (7 cols)                         */}
+          {/* LEFT CONFIGURATION PANEL (7 cols, independent scroll)     */}
           {/* ========================================================= */}
-          <div className="lg:col-span-7 space-y-6">
+          <div className="lg:col-span-7 space-y-6 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:sticky lg:top-[76px] lg:pr-3 lg:pb-6 [scrollbar-width:thin] panel-scrollbar">
 
             {/* STEP 1: CONTENT INPUT CARD */}
             <div className="bg-white rounded-3xl p-6 sm:p-7 shadow-xs border border-slate-200/80">
@@ -2626,8 +2685,8 @@ export default function QRCodeGenerator() {
           {/* ========================================================= */}
           {/* RIGHT PREVIEW & DOWNLOAD CARD (5 cols, sticky on desktop)  */}
           {/* ========================================================= */}
-          <div className="lg:col-span-5 relative h-full">
-            <div className="lg:sticky lg:top-20 space-y-5 lg:max-h-[calc(100vh-5.5rem)] lg:overflow-y-auto lg:pr-1.5 lg:pb-4 [scrollbar-width:thin]">
+          <div className="lg:col-span-5 lg:sticky lg:top-[76px] lg:self-start w-full">
+            <div className="space-y-5 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-1.5 lg:pb-6 [scrollbar-width:thin] panel-scrollbar">
               
               {/* CENTERPIECE PREVIEW CARD */}
               <div className="bg-white rounded-3xl p-6 sm:p-7 shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-slate-200/80 flex flex-col items-center">
@@ -2804,11 +2863,24 @@ export default function QRCodeGenerator() {
                     <span>{isDownloaded ? 'Downloaded Successfully!' : isExporting ? 'Generating high-res file…' : 'Download QR Code'}</span>
                   </button>
 
-                  {/* Download Limit & Status */}
+                  {/* Print Sheet / Multi-Label Maker Option */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPrintInitialType('qr');
+                      setStudioAction('print');
+                    }}
+                    className="w-full py-3.5 px-4 rounded-2xl font-bold border-2 border-dashed border-indigo-200 bg-indigo-50/70 hover:bg-indigo-100 hover:border-indigo-300 text-indigo-700 transition-all flex justify-center items-center gap-2 text-xs sm:text-sm cursor-pointer shadow-2xs hover:-translate-y-0.5 group"
+                  >
+                    <Printer className="w-4 h-4 text-indigo-600 transition-transform group-hover:scale-110" />
+                    <span>Print Sheet / Label Maker</span>
+                  </button>
+
+                  {/* Format & Ready Status */}
                   <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
                     <span>{qrSettings.format === 'pdf' ? `Vector PDF (${textSettings.pdfPaperSize})` : qrSettings.format === 'svg' ? 'Vector SVG (infinite scale)' : `${qrSettings.exportSize} × ${qrSettings.exportSize}px`}</span>
-                    <span className="font-semibold text-slate-600">
-                      Downloads: {isSubscribed ? <span className="text-emerald-600 font-bold">Unlimited</span> : `${downloadCount}/2 free`}
+                    <span className="font-semibold text-emerald-600 flex items-center gap-1">
+                      <CheckCircle className="w-3.5 h-3.5" /> High-Resolution Ready
                     </span>
                   </div>
                 </div>

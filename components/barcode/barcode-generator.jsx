@@ -15,31 +15,45 @@ import {
   ShieldCheck,
   Eye,
   Type,
-  Maximize2,
   RefreshCw,
   FileCode,
   Tag,
   Barcode,
   Layers,
+  FileText,
+  X,
+  Printer,
 } from "lucide-react";
-import { BARCODE_FORMATS, BARCODE_PRESETS } from "@/lib/barcode/types";
+import {
+  BARCODE_FORMATS,
+  BARCODE_CATEGORIES,
+  BARCODE_PRESETS,
+} from "@/lib/barcode/types";
 import {
   validateBarcodeData,
   assessBarcodeQuality,
+  GS1_AI_SPEC,
 } from "@/lib/barcode/validation";
 import {
   exportBarcodeSvg,
   exportBarcodeRaster,
   exportBarcodePdf,
+  generateBarcodeFilename,
+  copyBarcodeSvgMarkup,
+  copyToClipboard,
 } from "@/lib/barcode/export";
 
 export function BarcodeGenerator({
   isSubscribed = false,
   downloadCount = 0,
   onInitiateDownload,
+  onOpenPrintSheet = null,
   isExporting = false,
   setIsExporting = () => {},
 }) {
+  // Category Filter State
+  const [selectedCategoryId, setSelectedCategoryId] = useState("all");
+
   // Selected Barcode Format
   const [selectedFormatId, setSelectedFormatId] = useState("CODE128");
   const activeFormat = useMemo(() => {
@@ -50,34 +64,45 @@ export function BarcodeGenerator({
   }, [selectedFormatId]);
 
   // Barcode Input Data
-  const [barcodeInput, setBarcodeInput] = useState("ROOTIXA-128-PRO");
+  const [barcodeInput, setBarcodeInput] = useState(activeFormat.defaultData);
   const [autoCheckDigit, setAutoCheckDigit] = useState(true);
 
-  // Customize Sub-tabs
-  const [customizeTab, setCustomizeTab] = useState("dimensions"); // 'dimensions' | 'colors' | 'text' | 'presets'
+  // Customize Tabs: 'appearance' | 'dimensions' | 'text' | 'presets'
+  const [customizeTab, setCustomizeTab] = useState("appearance");
 
-  // Barcode Styling & Layout
+  // Styling & Dimension Controls
   const [barcodeSettings, setBarcodeSettings] = useState({
     lineColor: "#000000",
     background: "#FFFFFF",
+    isTransparentBg: false,
     width: 2,
     height: 80,
     margin: 15,
     displayValue: true,
-    textPosition: "bottom",
+    textPosition: "bottom", // 'bottom' | 'top'
     fontSize: 14,
-    fontOptions: "bold",
+    fontOptions: "bold", // 'bold' | 'italic' | ''
+    textAlign: "center", // 'center' | 'left' | 'right'
+    textMargin: 3,
   });
 
-  // Export Settings
+  // Export Configuration
   const [exportFormat, setExportFormat] = useState("png"); // 'png' | 'jpeg' | 'webp' | 'svg' | 'pdf'
-  const [exportWidth, setExportWidth] = useState(2000);
+  const [exportWidth, setExportWidth] = useState(2400);
   const [pdfPaperSize, setPdfPaperSize] = useState("A4"); // 'A4' | 'A5' | 'Letter' | 'Fit'
   const [isDownloaded, setIsDownloaded] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [copiedValue, setCopiedValue] = useState(false);
+  const [copiedSvg, setCopiedSvg] = useState(false);
+  const [showGs1Guide, setShowGs1Guide] = useState(false);
 
   // Render Target Ref
   const svgRef = useRef(null);
+
+  // Filtered Formats list based on selected category
+  const filteredFormats = useMemo(() => {
+    if (selectedCategoryId === "all") return BARCODE_FORMATS;
+    return BARCODE_FORMATS.filter((f) => f.categoryId === selectedCategoryId);
+  }, [selectedCategoryId]);
 
   // Validation State
   const validationResult = useMemo(() => {
@@ -88,30 +113,33 @@ export function BarcodeGenerator({
     );
   }, [selectedFormatId, barcodeInput, autoCheckDigit]);
 
-  // Derived Error
-  const effectiveError = validationResult.isValid
-    ? ""
-    : (validationResult.error || "Invalid barcode data.");
-
-  // Quality Assessment
+  // Readability / Scan Quality Assessment
   const qualityAssessment = useMemo(() => {
     return assessBarcodeQuality({
       isValid: validationResult.isValid,
       lineColor: barcodeSettings.lineColor,
       background: barcodeSettings.background,
+      isTransparentBg: barcodeSettings.isTransparentBg,
       margin: barcodeSettings.margin,
       width: barcodeSettings.width,
       height: barcodeSettings.height,
+      displayValue: barcodeSettings.displayValue,
+      fontSize: barcodeSettings.fontSize,
     });
   }, [validationResult.isValid, barcodeSettings]);
 
-  // Handle format change
+  // Derived Error message
+  const effectiveError = validationResult.isValid
+    ? ""
+    : (validationResult.error || "Invalid barcode data.");
+
+  // Handle format switch
   const handleFormatSelect = (fmt) => {
     setSelectedFormatId(fmt.id);
     setBarcodeInput(fmt.defaultData);
   };
 
-  // Handle preset application
+  // Handle Preset application
   const applyPreset = (preset) => {
     setBarcodeSettings((prev) => ({
       ...prev,
@@ -119,17 +147,52 @@ export function BarcodeGenerator({
     }));
   };
 
-  // Render Barcode via JsBarcode
+  // Reset to default settings for the active format
+  const handleResetSettings = () => {
+    const classic = BARCODE_PRESETS.find((p) => p.id === "classic");
+    if (classic) {
+      applyPreset(classic);
+    }
+    setBarcodeInput(activeFormat.defaultData);
+  };
+
+  // One-click Fix Checksum
+  const handleFixChecksum = () => {
+    if (validationResult.suggestedFix) {
+      setBarcodeInput(validationResult.suggestedFix);
+    }
+  };
+
+  // Quick insert GS1 Application Identifier tag
+  const handleInsertGs1Ai = (aiCode, sampleVal) => {
+    const addition = `(${aiCode})${sampleVal}`;
+    if (!barcodeInput.trim()) {
+      setBarcodeInput(addition);
+    } else {
+      setBarcodeInput(`${barcodeInput}${addition}`);
+    }
+  };
+
+  // Render Barcode via JsBarcode into SVG target
   useEffect(() => {
     if (!svgRef.current || !validationResult.isValid || !validationResult.finalData) {
       return;
     }
 
     try {
-      JsBarcode(svgRef.current, validationResult.finalData, {
-        format: selectedFormatId,
+      // Clear previous children
+      while (svgRef.current.firstChild) {
+        svgRef.current.removeChild(svgRef.current.firstChild);
+      }
+
+      const isGs1 = activeFormat.isGs1;
+      const targetFormat = activeFormat.jsbarcodeFormat;
+      const effectiveBg = barcodeSettings.isTransparentBg ? "transparent" : barcodeSettings.background;
+
+      const jsBarcodeOptions = {
+        format: targetFormat,
         lineColor: barcodeSettings.lineColor,
-        background: barcodeSettings.background,
+        background: effectiveBg,
         width: Number(barcodeSettings.width),
         height: Number(barcodeSettings.height),
         margin: Number(barcodeSettings.margin),
@@ -137,57 +200,77 @@ export function BarcodeGenerator({
         textPosition: barcodeSettings.textPosition,
         fontSize: Number(barcodeSettings.fontSize),
         fontOptions: barcodeSettings.fontOptions,
-        font: "ui-sans-serif, system-ui, -apple-system, sans-serif",
-      });
+        textAlign: barcodeSettings.textAlign,
+        textMargin: Number(barcodeSettings.textMargin),
+        font: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+      };
+
+      // GS1-128 specific options
+      if (isGs1) {
+        jsBarcodeOptions.ean128 = true;
+        if (validationResult.displayText) {
+          jsBarcodeOptions.text = validationResult.displayText;
+        }
+      }
+
+      // UPC-E specific display text
+      if (selectedFormatId === "UPCE" && validationResult.displayText) {
+        jsBarcodeOptions.text = validationResult.displayText;
+      }
+
+      JsBarcode(svgRef.current, validationResult.finalData, jsBarcodeOptions);
     } catch (err) {
       console.warn("JsBarcode render error:", err);
     }
   }, [
     selectedFormatId,
+    activeFormat,
     validationResult.finalData,
+    validationResult.displayText,
     validationResult.isValid,
     barcodeSettings,
   ]);
 
-  // Copy Barcode Data Action
-  const handleCopyData = async () => {
-    const textToCopy = validationResult.finalData || barcodeInput;
+  // Copy Barcode Value to Clipboard
+  const handleCopyValue = async () => {
+    const textToCopy = validationResult.displayText || validationResult.finalData || barcodeInput;
     if (!textToCopy) return;
 
-    try {
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(textToCopy);
-      } else {
-        const ta = document.createElement("textarea");
-        ta.value = textToCopy;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand("copy");
-        document.body.removeChild(ta);
-      }
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error("Failed to copy:", err);
+    const ok = await copyToClipboard(textToCopy);
+    if (ok) {
+      setCopiedValue(true);
+      setTimeout(() => setCopiedValue(false), 2000);
     }
   };
 
-  // Execute the actual export
+  // Copy SVG Vector to Clipboard
+  const handleCopySvg = async () => {
+    if (!svgRef.current || !validationResult.isValid) return;
+
+    const ok = await copyBarcodeSvgMarkup(svgRef.current);
+    if (ok) {
+      setCopiedSvg(true);
+      setTimeout(() => setCopiedSvg(false), 2000);
+    }
+  };
+
+  // Execute the actual download
   const executeBarcodeDownload = useCallback(async () => {
     if (!svgRef.current || !validationResult.isValid) return;
 
     setIsExporting(true);
-    const filename = `rootixa-barcode-${selectedFormatId.toLowerCase()}`;
+    const valueForName = validationResult.displayText || validationResult.finalData || barcodeInput;
+    const filename = generateBarcodeFilename(selectedFormatId, valueForName, exportFormat);
 
     try {
       if (exportFormat === "svg") {
-        exportBarcodeSvg(svgRef.current, `${filename}.svg`);
+        exportBarcodeSvg(svgRef.current, filename);
       } else if (exportFormat === "pdf") {
         await exportBarcodePdf({
           svgElement: svgRef.current,
           paperSize: pdfPaperSize,
-          filename: `${filename}-${pdfPaperSize.toLowerCase()}.pdf`,
-          barcodeValue: validationResult.finalData,
+          filename,
+          barcodeValue: validationResult.displayText || validationResult.finalData,
           barcodeFormat: activeFormat.name,
         });
       } else {
@@ -195,8 +278,9 @@ export function BarcodeGenerator({
           svgElement: svgRef.current,
           format: exportFormat,
           exportWidth,
-          filename: `${filename}.${exportFormat === "jpeg" ? "jpg" : exportFormat}`,
+          filename,
           background: barcodeSettings.background,
+          isTransparentBg: barcodeSettings.isTransparentBg,
         });
       }
 
@@ -226,13 +310,16 @@ export function BarcodeGenerator({
     pdfPaperSize,
     selectedFormatId,
     validationResult.finalData,
+    validationResult.displayText,
     validationResult.isValid,
+    barcodeInput,
     activeFormat.name,
     barcodeSettings.background,
+    barcodeSettings.isTransparentBg,
     setIsExporting,
   ]);
 
-  // Initiate download through parent quota system
+  // Initiate download via parent quota limit system
   const handleDownloadClick = () => {
     if (effectiveError) return;
     if (onInitiateDownload) {
@@ -243,12 +330,13 @@ export function BarcodeGenerator({
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start relative">
       {/* ========================================================= */}
-      {/* LEFT CONFIGURATION PANEL (7 cols)                         */}
+      {/* LEFT CONFIGURATION PANEL (7 cols, independent scroll)     */}
       {/* ========================================================= */}
-      <div className="lg:col-span-7 space-y-6">
-        {/* STEP 1: SELECT BARCODE TYPE */}
+      <div className="lg:col-span-7 space-y-6 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:sticky lg:top-[76px] lg:pr-3 lg:pb-6 [scrollbar-width:thin] panel-scrollbar">
+        
+        {/* STEP 1: SELECT BARCODE STANDARD */}
         <div className="bg-white rounded-3xl p-6 sm:p-7 shadow-xs border border-slate-200/80">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
             <div>
@@ -256,49 +344,81 @@ export function BarcodeGenerator({
                 Step 1
               </span>
               <h2 className="text-lg font-extrabold text-slate-900">
-                Select Barcode Type
+                Select Barcode Standard
               </h2>
             </div>
-            <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
-              7 Industry Standards
+            <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1 rounded-full w-fit">
+              9 Standards Supported
             </span>
           </div>
 
+          {/* Category Filter Pills */}
+          <div className="flex items-center gap-1.5 mb-4 p-1 bg-slate-100 rounded-2xl overflow-x-auto no-scrollbar">
+            {BARCODE_CATEGORIES.map((cat) => {
+              const isActive = selectedCategoryId === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setSelectedCategoryId(cat.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                    isActive
+                      ? "bg-white text-indigo-600 shadow-2xs"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                >
+                  {cat.label}
+                </button>
+              );
+            })}
+          </div>
+
           {/* Barcode Formats Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            {BARCODE_FORMATS.map((fmt) => {
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {filteredFormats.map((fmt) => {
               const isSelected = selectedFormatId === fmt.id;
               return (
                 <button
                   key={fmt.id}
                   type="button"
                   onClick={() => handleFormatSelect(fmt)}
-                  className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between group ${
+                  className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between group ${
                     isSelected
                       ? "border-indigo-600 bg-indigo-50/50 shadow-xs ring-2 ring-indigo-600/10"
                       : "border-slate-200/80 bg-slate-50/40 hover:bg-slate-100/70 hover:border-slate-300"
                   }`}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">
-                        {fmt.category}
-                      </span>
-                      <h3 className="font-extrabold text-sm text-slate-900 mt-0.5">
-                        {fmt.name}
-                      </h3>
+                  <div>
+                    <div className="flex items-start justify-between gap-2 mb-1.5">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                          {fmt.category}
+                        </span>
+                        <h3 className="font-extrabold text-base text-slate-900 mt-1">
+                          {fmt.name}
+                        </h3>
+                      </div>
+                      {isSelected ? (
+                        <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                          <Check className="w-3 h-3" />
+                        </span>
+                      ) : (
+                        <span className="w-5 h-5 rounded-full border border-slate-300 group-hover:border-indigo-400 shrink-0" />
+                      )}
                     </div>
-                    {isSelected ? (
-                      <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs">
-                        <Check className="w-3 h-3" />
-                      </span>
-                    ) : (
-                      <span className="w-5 h-5 rounded-full border border-slate-300 group-hover:border-indigo-400 shrink-0" />
-                    )}
+                    <p className="text-xs text-slate-600 font-medium leading-relaxed">
+                      {fmt.subtitle}
+                    </p>
                   </div>
-                  <p className="text-xs text-slate-600 font-medium mt-1">
-                    {fmt.subtitle}
-                  </p>
+
+                  <div className="mt-3 pt-2.5 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-400">
+                    <span className="truncate max-w-[140px]" title={fmt.inputRequirements}>
+                      {fmt.inputRequirements}
+                    </span>
+                    <span className="font-mono text-slate-500 font-bold bg-white px-1.5 py-0.5 rounded border border-slate-200 text-[10px]">
+                      {fmt.example}
+                    </span>
+                  </div>
                 </button>
               );
             })}
@@ -316,19 +436,35 @@ export function BarcodeGenerator({
                 Enter Barcode Data
               </h2>
             </div>
-            <span className="text-xs text-slate-400 font-medium">
-              Standard: {activeFormat.name}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+                Standard: <strong className="text-indigo-600">{activeFormat.name}</strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => setBarcodeInput(activeFormat.defaultData)}
+                className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+                title="Reset input to standard example value"
+              >
+                Insert Example
+              </button>
+            </div>
           </div>
 
           <div className="space-y-4">
+            {/* Main Input Field */}
             <div>
-              <label
-                htmlFor="barcode-data-input"
-                className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5"
-              >
-                Barcode Value
-              </label>
+              <div className="flex items-center justify-between mb-1.5">
+                <label
+                  htmlFor="barcode-data-input"
+                  className="block text-xs font-bold uppercase tracking-wider text-slate-700"
+                >
+                  Barcode Value
+                </label>
+                <span className="text-[11px] text-slate-400">
+                  {barcodeInput.length} character{barcodeInput.length === 1 ? "" : "s"}
+                </span>
+              </div>
               <div className="relative">
                 <input
                   id="barcode-data-input"
@@ -336,19 +472,101 @@ export function BarcodeGenerator({
                   value={barcodeInput}
                   onChange={(e) => setBarcodeInput(e.target.value)}
                   placeholder={activeFormat.placeholder}
-                  className={`w-full px-4 py-3.5 rounded-2xl border text-sm font-semibold outline-none transition-all ${
+                  className={`w-full px-4 py-3.5 pr-10 rounded-2xl border text-sm font-mono font-semibold outline-none transition-all ${
                     !validationResult.isValid
                       ? "border-rose-300 bg-rose-50/30 text-rose-900 focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20"
                       : "border-slate-200 bg-slate-50/50 text-slate-900 focus:border-indigo-600 focus:bg-white focus:ring-2 focus:ring-indigo-500/20"
                   }`}
                 />
+                {barcodeInput && (
+                  <button
+                    type="button"
+                    onClick={() => setBarcodeInput("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-200 transition cursor-pointer"
+                    title="Clear input"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
-              <p className="text-xs text-slate-500 mt-1.5">
-                {activeFormat.helper}
-              </p>
             </div>
 
-            {/* Auto Check Digit Option (For EAN-13, EAN-8, UPC-A, ITF-14) */}
+            {/* GS1-128 Application Identifier Assistant */}
+            {activeFormat.isGs1 && (
+              <div className="p-4 bg-indigo-50/40 rounded-2xl border border-indigo-100 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-900">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>GS1 Application Identifier Assistant</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowGs1Guide(!showGs1Guide)}
+                    className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 underline cursor-pointer"
+                  >
+                    {showGs1Guide ? "Hide Guide" : "View AI Guide"}
+                  </button>
+                </div>
+
+                {/* Quick Insert AI Chips */}
+                <div className="flex flex-wrap gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleInsertGs1Ai("01", "01234567890128")}
+                    className="px-2.5 py-1 rounded-lg bg-white border border-indigo-200 text-[11px] font-bold text-indigo-700 hover:bg-indigo-50 hover:border-indigo-300 transition cursor-pointer shadow-2xs"
+                  >
+                    + (01) GTIN
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleInsertGs1Ai("10", "BATCH982")}
+                    className="px-2.5 py-1 rounded-lg bg-white border border-indigo-200 text-[11px] font-bold text-indigo-700 hover:bg-indigo-50 hover:border-indigo-300 transition cursor-pointer shadow-2xs"
+                  >
+                    + (10) Batch / Lot
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleInsertGs1Ai("17", "261231")}
+                    className="px-2.5 py-1 rounded-lg bg-white border border-indigo-200 text-[11px] font-bold text-indigo-700 hover:bg-indigo-50 hover:border-indigo-300 transition cursor-pointer shadow-2xs"
+                  >
+                    + (17) Expiry Date
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleInsertGs1Ai("21", "SN987654")}
+                    className="px-2.5 py-1 rounded-lg bg-white border border-indigo-200 text-[11px] font-bold text-indigo-700 hover:bg-indigo-50 hover:border-indigo-300 transition cursor-pointer shadow-2xs"
+                  >
+                    + (21) Serial No.
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleInsertGs1Ai("00", "101234567890123456")}
+                    className="px-2.5 py-1 rounded-lg bg-white border border-indigo-200 text-[11px] font-bold text-indigo-700 hover:bg-indigo-50 hover:border-indigo-300 transition cursor-pointer shadow-2xs"
+                  >
+                    + (00) SSCC
+                  </button>
+                </div>
+
+                {/* Collapsible GS1 Guide Table */}
+                {showGs1Guide && (
+                  <div className="pt-2 border-t border-indigo-100 text-xs">
+                    <p className="text-[11px] text-indigo-900 font-semibold mb-2">
+                      GS1-128 encodes data paired with parenthesized Application Identifiers. Variable-length fields are automatically delimited with FNC1.
+                    </p>
+                    <div className="max-h-40 overflow-y-auto space-y-1 pr-1 [scrollbar-width:thin]">
+                      {Object.entries(GS1_AI_SPEC).map(([ai, spec]) => (
+                        <div key={ai} className="flex items-center justify-between text-[11px] bg-white/80 p-1.5 rounded border border-indigo-100">
+                          <span className="font-mono font-bold text-indigo-700">({ai}) {spec.name}</span>
+                          <span className="text-slate-500">{spec.desc} ({spec.fixed ? `${spec.length} digits` : `1-${spec.maxLength} chars`})</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Auto Check Digit Option (For EAN-13, EAN-8, UPC-A, UPC-E, ITF-14) */}
             {activeFormat.supportsAutoCheckDigit && (
               <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2.5">
@@ -363,13 +581,13 @@ export function BarcodeGenerator({
                     htmlFor="toggle-auto-check-digit"
                     className="text-xs font-bold text-slate-800 cursor-pointer select-none"
                   >
-                    Generate check digit automatically (Modulo 10)
+                    Generate / Correct Check Digit Automatically (Modulo 10)
                   </label>
                 </div>
 
                 {validationResult.computedCheckDigit !== undefined && (
                   <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 self-start sm:self-auto">
-                    <span>Check Digit:</span>
+                    <span>Computed Check Digit:</span>
                     <span className="text-sm font-black text-indigo-600">
                       {validationResult.computedCheckDigit}
                     </span>
@@ -378,32 +596,55 @@ export function BarcodeGenerator({
               </div>
             )}
 
-            {/* Real-time Validation Status Badge */}
+            {/* Real-time Validation Status Alert */}
             <div
-              className={`p-3 rounded-xl border text-xs flex items-center gap-2 transition-all ${
+              className={`p-3.5 rounded-2xl border text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 transition-all ${
                 validationResult.isValid
-                  ? "bg-emerald-50/80 border-emerald-200 text-emerald-800"
-                  : "bg-rose-50/80 border-rose-200 text-rose-800"
+                  ? "bg-emerald-50/80 border-emerald-200 text-emerald-900"
+                  : "bg-rose-50/80 border-rose-200 text-rose-900"
               }`}
             >
-              {validationResult.isValid ? (
-                <>
-                  <Check className="w-4 h-4 shrink-0 text-emerald-600" />
-                  <span className="font-semibold">
-                    {validationResult.message || `✓ Valid ${activeFormat.name} data`}
+              <div className="flex items-start gap-2">
+                {validationResult.isValid ? (
+                  <Check className="w-4 h-4 shrink-0 text-emerald-600 mt-0.5" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
+                )}
+                <div>
+                  <span className="font-bold block">
+                    {validationResult.isValid
+                      ? validationResult.message || `✓ Valid ${activeFormat.name} data`
+                      : "✕ Invalid Data"}
                   </span>
-                </>
-              ) : (
-                <>
-                  <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
-                  <span className="font-semibold">{validationResult.error}</span>
-                </>
+                  {!validationResult.isValid && (
+                    <span className="text-[11px] font-medium text-rose-700 mt-0.5 block leading-snug">
+                      {validationResult.error}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* 1-Click Fix Checksum button if applicable */}
+              {!validationResult.isValid && validationResult.suggestedFix && (
+                <button
+                  type="button"
+                  onClick={handleFixChecksum}
+                  className="px-3 py-1.5 bg-rose-600 text-white rounded-xl text-xs font-bold hover:bg-rose-700 transition cursor-pointer self-start sm:self-auto shrink-0 shadow-xs"
+                >
+                  Fix Checksum →
+                </button>
               )}
+            </div>
+
+            {/* Contextual Input Guidance */}
+            <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-200/60 text-[11px] text-slate-500 flex flex-wrap items-center justify-between gap-2">
+              <span><strong>Allowed Characters:</strong> {activeFormat.allowedCharset}</span>
+              <span><strong>Requirement:</strong> {activeFormat.inputRequirements}</span>
             </div>
           </div>
         </div>
 
-        {/* STEP 3: CUSTOMIZE BARCODE */}
+        {/* STEP 3: PROFESSIONAL CUSTOMIZATION PANEL */}
         <div className="bg-white rounded-3xl p-6 sm:p-7 shadow-xs border border-slate-200/80">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-5">
             <div>
@@ -414,14 +655,14 @@ export function BarcodeGenerator({
                 Customize Barcode
               </h2>
             </div>
-            <p className="text-xs text-slate-400">Appearance & Dimensions</p>
+            <p className="text-xs text-slate-400">Appearance, Dimensions, Text & Presets</p>
           </div>
 
           {/* Sub-tabs Navigation */}
           <div className="flex items-center gap-1.5 mb-6 p-1 bg-slate-100 rounded-2xl overflow-x-auto no-scrollbar">
             {[
+              { id: "appearance", label: "Appearance", icon: Palette },
               { id: "dimensions", label: "Dimensions", icon: Sliders },
-              { id: "colors", label: "Colors", icon: Palette },
               { id: "text", label: "Readable Text", icon: Type },
               { id: "presets", label: "Presets", icon: Layers },
             ].map((tab) => {
@@ -445,7 +686,139 @@ export function BarcodeGenerator({
             })}
           </div>
 
-          {/* TAB 1: DIMENSIONS */}
+          {/* TAB 1: APPEARANCE */}
+          {customizeTab === "appearance" && (
+            <div className="space-y-6">
+              {/* Bar Color */}
+              <div className="space-y-2.5">
+                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                  Barcode Line Color
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  {[
+                    { label: "Classic Black", hex: "#000000" },
+                    { label: "Dark Slate", hex: "#0F172A" },
+                    { label: "Deep Indigo", hex: "#4338CA" },
+                    { label: "Navy Blue", hex: "#1E3A8A" },
+                    { label: "Dark Emerald", hex: "#065F46" },
+                  ].map((c) => (
+                    <button
+                      key={c.hex}
+                      type="button"
+                      onClick={() =>
+                        setBarcodeSettings((prev) => ({ ...prev, lineColor: c.hex }))
+                      }
+                      className={`h-9 px-3 rounded-xl text-xs font-bold transition flex items-center gap-2 border cursor-pointer ${
+                        barcodeSettings.lineColor === c.hex
+                          ? "border-indigo-600 bg-indigo-50 text-indigo-900 shadow-2xs"
+                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      <span
+                        className="w-3.5 h-3.5 rounded-full border border-slate-300"
+                        style={{ backgroundColor: c.hex }}
+                      />
+                      <span>{c.label}</span>
+                    </button>
+                  ))}
+                  <input
+                    type="color"
+                    value={barcodeSettings.lineColor}
+                    onChange={(e) =>
+                      setBarcodeSettings((prev) => ({ ...prev, lineColor: e.target.value }))
+                    }
+                    className="w-9 h-9 p-0.5 rounded-xl border border-slate-200 cursor-pointer bg-white"
+                    title="Choose custom line color"
+                  />
+                </div>
+              </div>
+
+              {/* Background Color & Transparency */}
+              <div className="space-y-3 border-t border-slate-100 pt-4">
+                <div className="flex items-center justify-between">
+                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                    Background Color
+                  </label>
+                  <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={barcodeSettings.isTransparentBg}
+                      onChange={(e) =>
+                        setBarcodeSettings((prev) => ({
+                          ...prev,
+                          isTransparentBg: e.target.checked,
+                        }))
+                      }
+                      className="w-4 h-4 text-indigo-600 accent-indigo-600 rounded cursor-pointer"
+                    />
+                    <span>Transparent Background</span>
+                  </label>
+                </div>
+
+                {!barcodeSettings.isTransparentBg ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    {[
+                      { label: "Pure White", hex: "#FFFFFF" },
+                      { label: "Soft Slate", hex: "#F8FAFC" },
+                      { label: "Warm White", hex: "#FFFBEB" },
+                    ].map((c) => (
+                      <button
+                        key={c.hex}
+                        type="button"
+                        onClick={() =>
+                          setBarcodeSettings((prev) => ({ ...prev, background: c.hex }))
+                        }
+                        className={`h-9 px-3 rounded-xl text-xs font-bold transition flex items-center gap-2 border cursor-pointer ${
+                          barcodeSettings.background === c.hex
+                            ? "border-indigo-600 bg-indigo-50 text-indigo-900 shadow-2xs"
+                            : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                        }`}
+                      >
+                        <span
+                          className="w-3.5 h-3.5 rounded-full border border-slate-300 shadow-2xs"
+                          style={{ backgroundColor: c.hex }}
+                        />
+                        <span>{c.label}</span>
+                      </button>
+                    ))}
+                    <input
+                      type="color"
+                      value={barcodeSettings.background}
+                      onChange={(e) =>
+                        setBarcodeSettings((prev) => ({ ...prev, background: e.target.value }))
+                      }
+                      className="w-9 h-9 p-0.5 rounded-xl border border-slate-200 cursor-pointer bg-white"
+                      title="Choose custom background color"
+                    />
+                  </div>
+                ) : (
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 text-xs text-slate-600">
+                    <p className="font-semibold">Transparent background active</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Exported in true transparency for PNG, WEBP, and SVG. Will be flattened to pure white for JPEG.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Contrast Readout */}
+              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between text-xs">
+                <div>
+                  <span className="text-slate-500 font-medium block">
+                    Optical Scanner Contrast Ratio:
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    Minimum recommended for retail: 4.5:1 (Optimal: 7.0:1)
+                  </span>
+                </div>
+                <span className="font-extrabold text-sm text-indigo-600 font-mono">
+                  {qualityAssessment.contrastRatio.toFixed(1)}:1
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: DIMENSIONS */}
           {customizeTab === "dimensions" && (
             <div className="space-y-6">
               {/* Bar Width */}
@@ -456,7 +829,7 @@ export function BarcodeGenerator({
                       Bar Width / Density
                     </p>
                     <p className="text-[10px] text-slate-500">
-                      Width of a single unit bar
+                      Width of an individual module bar
                     </p>
                   </div>
                   <span className="font-mono text-indigo-600 font-bold">
@@ -497,7 +870,7 @@ export function BarcodeGenerator({
                 <input
                   type="range"
                   min="40"
-                  max="140"
+                  max="150"
                   step="5"
                   value={barcodeSettings.height}
                   onChange={(e) =>
@@ -518,7 +891,7 @@ export function BarcodeGenerator({
                       Quiet Zone Margin
                     </p>
                     <p className="text-[10px] text-slate-500">
-                      Clear surrounding buffer for scanner beam recognition
+                      Blank buffer space around barcode required by laser scanners
                     </p>
                   </div>
                   <span className="font-mono text-indigo-600 font-bold">
@@ -539,107 +912,13 @@ export function BarcodeGenerator({
                   }
                   className="w-full accent-indigo-600 cursor-pointer"
                 />
-              </div>
-            </div>
-          )}
-
-          {/* TAB 2: COLORS */}
-          {customizeTab === "colors" && (
-            <div className="space-y-6">
-              {/* Bar Color */}
-              <div className="space-y-3">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                  Barcode Line Color
-                </label>
-                <div className="flex flex-wrap items-center gap-2">
-                  {[
-                    { label: "Classic Black", hex: "#000000" },
-                    { label: "Dark Slate", hex: "#0F172A" },
-                    { label: "Deep Indigo", hex: "#4F46E5" },
-                    { label: "Navy Blue", hex: "#1E3A8A" },
-                    { label: "Dark Emerald", hex: "#065F46" },
-                  ].map((c) => (
-                    <button
-                      key={c.hex}
-                      type="button"
-                      onClick={() =>
-                        setBarcodeSettings((prev) => ({ ...prev, lineColor: c.hex }))
-                      }
-                      className={`h-9 px-3 rounded-xl text-xs font-bold transition flex items-center gap-2 border cursor-pointer ${
-                        barcodeSettings.lineColor === c.hex
-                          ? "border-indigo-600 bg-indigo-50 text-indigo-900"
-                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                      }`}
-                    >
-                      <span
-                        className="w-3.5 h-3.5 rounded-full border border-slate-300"
-                        style={{ backgroundColor: c.hex }}
-                      />
-                      <span>{c.label}</span>
-                    </button>
-                  ))}
-                  <input
-                    type="color"
-                    value={barcodeSettings.lineColor}
-                    onChange={(e) =>
-                      setBarcodeSettings((prev) => ({ ...prev, lineColor: e.target.value }))
-                    }
-                    className="w-9 h-9 p-0.5 rounded-xl border border-slate-200 cursor-pointer bg-white"
-                    title="Custom color"
-                  />
+                <div className="flex justify-between text-[10px] text-slate-400">
+                  <span>6px (Tight)</span>
+                  <span className={barcodeSettings.margin >= 14 ? "text-emerald-600 font-bold" : "text-amber-600"}>
+                    {barcodeSettings.margin >= 14 ? "✓ Standard Compliant (>=14px)" : "Caution: Quiet zone is narrow"}
+                  </span>
+                  <span>35px (Generous)</span>
                 </div>
-              </div>
-
-              {/* Background Color */}
-              <div className="space-y-3 border-t border-slate-100 pt-4">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
-                  Background Color
-                </label>
-                <div className="flex flex-wrap items-center gap-2">
-                  {[
-                    { label: "Pure White", hex: "#FFFFFF" },
-                    { label: "Soft Slate", hex: "#F8FAFC" },
-                    { label: "Warm White", hex: "#FFFBEB" },
-                  ].map((c) => (
-                    <button
-                      key={c.hex}
-                      type="button"
-                      onClick={() =>
-                        setBarcodeSettings((prev) => ({ ...prev, background: c.hex }))
-                      }
-                      className={`h-9 px-3 rounded-xl text-xs font-bold transition flex items-center gap-2 border cursor-pointer ${
-                        barcodeSettings.background === c.hex
-                          ? "border-indigo-600 bg-indigo-50 text-indigo-900"
-                          : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                      }`}
-                    >
-                      <span
-                        className="w-3.5 h-3.5 rounded-full border border-slate-300 shadow-2xs"
-                        style={{ backgroundColor: c.hex }}
-                      />
-                      <span>{c.label}</span>
-                    </button>
-                  ))}
-                  <input
-                    type="color"
-                    value={barcodeSettings.background}
-                    onChange={(e) =>
-                      setBarcodeSettings((prev) => ({ ...prev, background: e.target.value }))
-                    }
-                    className="w-9 h-9 p-0.5 rounded-xl border border-slate-200 cursor-pointer bg-white"
-                    title="Custom background color"
-                  />
-                </div>
-              </div>
-
-              {/* Contrast Note */}
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 flex items-center justify-between text-xs">
-                <span className="text-slate-500 font-medium">
-                  Optical Contrast Ratio:
-                </span>
-                <span className="font-extrabold text-indigo-600">
-                  {qualityAssessment.contrastRatio.toFixed(1)}:1
-                </span>
               </div>
             </div>
           )}
@@ -654,10 +933,10 @@ export function BarcodeGenerator({
                     htmlFor="toggle-barcode-text"
                     className="block text-xs font-extrabold text-slate-900 cursor-pointer"
                   >
-                    Human-Readable Barcode Value
+                    Display Human-Readable Text
                   </label>
                   <p className="text-[11px] text-slate-500 mt-0.5">
-                    Print the encoded digits or text underneath/above the bars
+                    Print the encoded digits or text underneath or above the bars
                   </p>
                 </div>
                 <input
@@ -707,30 +986,94 @@ export function BarcodeGenerator({
                     </div>
                   </div>
 
-                  {/* Font Size */}
-                  <div className="space-y-2 border-t border-slate-100 pt-4">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="font-bold text-slate-800 uppercase tracking-wider">
-                        Font Size
-                      </span>
-                      <span className="font-mono text-indigo-600 font-bold">
-                        {barcodeSettings.fontSize}px
-                      </span>
+                  {/* Font Size & Weight */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-t border-slate-100 pt-4">
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-bold text-slate-800 uppercase tracking-wider">
+                          Font Size
+                        </span>
+                        <span className="font-mono text-indigo-600 font-bold">
+                          {barcodeSettings.fontSize}px
+                        </span>
+                      </div>
+                      <input
+                        type="range"
+                        min="10"
+                        max="22"
+                        step="1"
+                        value={barcodeSettings.fontSize}
+                        onChange={(e) =>
+                          setBarcodeSettings((prev) => ({
+                            ...prev,
+                            fontSize: parseInt(e.target.value, 10),
+                          }))
+                        }
+                        className="w-full accent-indigo-600 cursor-pointer"
+                      />
                     </div>
-                    <input
-                      type="range"
-                      min="10"
-                      max="22"
-                      step="1"
-                      value={barcodeSettings.fontSize}
-                      onChange={(e) =>
-                        setBarcodeSettings((prev) => ({
-                          ...prev,
-                          fontSize: parseInt(e.target.value, 10),
-                        }))
-                      }
-                      className="w-full accent-indigo-600 cursor-pointer"
-                    />
+
+                    <div className="space-y-2">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                        Font Weight
+                      </label>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        {[
+                          { id: "bold", label: "Bold" },
+                          { id: "", label: "Normal" },
+                        ].map((w) => (
+                          <button
+                            key={w.id}
+                            type="button"
+                            onClick={() =>
+                              setBarcodeSettings((prev) => ({
+                                ...prev,
+                                fontOptions: w.id,
+                              }))
+                            }
+                            className={`py-2 px-2 text-xs font-bold rounded-xl border transition cursor-pointer ${
+                              barcodeSettings.fontOptions === w.id
+                                ? "bg-indigo-600 text-white border-indigo-600 shadow-2xs"
+                                : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                            }`}
+                          >
+                            {w.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Text Alignment */}
+                  <div className="space-y-2 border-t border-slate-100 pt-4">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-slate-700">
+                      Text Alignment
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { id: "center", label: "Center" },
+                        { id: "left", label: "Left" },
+                        { id: "right", label: "Right" },
+                      ].map((al) => (
+                        <button
+                          key={al.id}
+                          type="button"
+                          onClick={() =>
+                            setBarcodeSettings((prev) => ({
+                              ...prev,
+                              textAlign: al.id,
+                            }))
+                          }
+                          className={`py-2 px-3 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                            barcodeSettings.textAlign === al.id
+                              ? "bg-indigo-600 text-white border-indigo-600 shadow-2xs"
+                              : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
+                          }`}
+                        >
+                          {al.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </>
               )}
@@ -748,15 +1091,20 @@ export function BarcodeGenerator({
                   className="p-4 rounded-2xl border border-slate-200/80 bg-slate-50/50 hover:bg-slate-100/80 hover:border-indigo-300 transition-all text-left group cursor-pointer flex flex-col justify-between"
                 >
                   <div>
-                    <h3 className="font-extrabold text-sm text-slate-900 group-hover:text-indigo-600 transition-colors">
-                      {preset.name}
-                    </h3>
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className="font-extrabold text-sm text-slate-900 group-hover:text-indigo-600 transition-colors">
+                        {preset.name}
+                      </h3>
+                      <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded border border-slate-200">
+                        {preset.badge}
+                      </span>
+                    </div>
                     <p className="text-xs text-slate-500 mt-1 leading-relaxed">
                       {preset.description}
                     </p>
                   </div>
                   <span className="mt-3 inline-flex items-center text-xs font-bold text-indigo-600 group-hover:underline">
-                    Apply preset &rarr;
+                    Apply preset →
                   </span>
                 </button>
               ))}
@@ -768,11 +1116,13 @@ export function BarcodeGenerator({
       {/* ========================================================= */}
       {/* RIGHT PREVIEW & EXPORT PANEL (5 cols, sticky on desktop)   */}
       {/* ========================================================= */}
-      <div className="lg:col-span-5 relative h-full">
-        <div className="lg:sticky lg:top-20 space-y-5 lg:max-h-[calc(100vh-5.5rem)] lg:overflow-y-auto lg:pr-1.5 lg:pb-4 [scrollbar-width:thin]">
+      <div className="lg:col-span-5 lg:sticky lg:top-[76px] lg:self-start w-full">
+        <div className="space-y-5 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:pr-1.5 lg:pb-6 [scrollbar-width:thin] panel-scrollbar">
+          
           {/* CENTERPIECE PREVIEW CARD */}
           <div className="bg-white rounded-3xl p-6 sm:p-7 shadow-[0_8px_30px_rgb(0,0,0,0.06)] border border-slate-200/80 flex flex-col items-center">
-            {/* Header: Live Badge & Quality Status */}
+            
+            {/* Header: Live Badge & Readability Status */}
             <div className="w-full flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold">
                 <span className="relative flex h-2 w-2">
@@ -792,9 +1142,9 @@ export function BarcodeGenerator({
                 }`}
               >
                 {qualityAssessment.status === "excellent" ? (
-                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
                 ) : (
-                  <AlertTriangle className="w-3.5 h-3.5" />
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                 )}
                 <span>{qualityAssessment.label}</span>
               </div>
@@ -802,8 +1152,16 @@ export function BarcodeGenerator({
 
             {/* Rendered Barcode Preview Surface */}
             <div
-              className="p-5 rounded-2xl mb-4 border border-slate-200/90 flex flex-col justify-center items-center transition-all duration-200 shadow-xs max-w-full overflow-hidden w-full min-h-[160px]"
-              style={{ backgroundColor: barcodeSettings.background }}
+              className={`p-5 rounded-2xl mb-4 border border-slate-200/90 flex flex-col justify-center items-center transition-all duration-200 shadow-xs max-w-full overflow-hidden w-full min-h-[160px] relative ${
+                barcodeSettings.isTransparentBg
+                  ? "bg-[linear-gradient(45deg,#f1f5f9_25%,transparent_25%),linear-gradient(-45deg,#f1f5f9_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#f1f5f9_75%),linear-gradient(-45deg,transparent_75%,#f1f5f9_75%)] bg-[size:16px_16px] bg-[position:0_0,0_8px,8px_-8px,-8px_0px]"
+                  : ""
+              }`}
+              style={{
+                backgroundColor: barcodeSettings.isTransparentBg
+                  ? "#FFFFFF"
+                  : barcodeSettings.background,
+              }}
             >
               {effectiveError ? (
                 <div className="py-8 text-center text-rose-600 space-y-1.5">
@@ -812,7 +1170,7 @@ export function BarcodeGenerator({
                     {effectiveError}
                   </p>
                   <p className="text-[11px] text-slate-400">
-                    Fix data input to preview barcode
+                    Fix data input above to render barcode
                   </p>
                 </div>
               ) : (
@@ -826,55 +1184,97 @@ export function BarcodeGenerator({
               )}
             </div>
 
-            {/* Action Bar: Copy Barcode Data */}
-            <div className="w-full flex items-center justify-between pb-4 mb-4 border-b border-slate-100">
-              <span className="text-xs font-mono text-slate-500 truncate max-w-[200px]">
-                {validationResult.finalData || barcodeInput}
+            {/* Action Bar: Copy Barcode Value & Copy SVG */}
+            <div className="w-full flex items-center justify-between pb-4 mb-4 border-b border-slate-100 gap-2 flex-wrap">
+              <span className="text-xs font-mono text-slate-500 truncate max-w-[160px]" title={validationResult.displayText || validationResult.finalData || barcodeInput}>
+                {validationResult.displayText || validationResult.finalData || barcodeInput}
               </span>
-              <button
-                type="button"
-                onClick={handleCopyData}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                  copied
-                    ? "bg-emerald-600 text-white"
-                    : "bg-slate-100 hover:bg-slate-200 text-slate-700"
-                }`}
-              >
-                {copied ? (
-                  <>
-                    <Check className="w-3.5 h-3.5" />
-                    <span>Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>Copy Data</span>
-                  </>
-                )}
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleCopyValue}
+                  className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                    copiedValue
+                      ? "bg-emerald-600 text-white"
+                      : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                  }`}
+                  title="Copy encoded text or formatted GS1 value"
+                >
+                  {copiedValue ? (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      <span>Copy Value</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCopySvg}
+                  disabled={Boolean(effectiveError)}
+                  className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+                    copiedSvg
+                      ? "bg-emerald-600 text-white"
+                      : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                  }`}
+                  title="Copy raw SVG vector XML to clipboard"
+                >
+                  {copiedSvg ? (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>SVG Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <FileCode className="w-3.5 h-3.5" />
+                      <span>Copy SVG</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleResetSettings}
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+                  title="Reset settings to defaults"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
 
-            {/* Quality Checklist */}
-            <div className="w-full p-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs mb-4 space-y-1.5">
+            {/* Scan Quality & Readability Checklist */}
+            <div className="w-full p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs mb-4 space-y-2">
               <div className="flex items-center justify-between font-bold text-[11px] uppercase tracking-wider text-slate-500 mb-1">
-                <span>Scan Quality Checklist</span>
-                <span className="text-indigo-600">
-                  {qualityAssessment.checks.filter((c) => c.passed).length}/4 Passed
+                <span>Scan Readability Checklist</span>
+                <span className="text-indigo-600 font-extrabold">
+                  {qualityAssessment.passedCount}/{qualityAssessment.totalChecks} Passed
                 </span>
               </div>
-              {qualityAssessment.checks.map((check, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center gap-1.5 text-[11px] text-slate-600"
-                >
-                  {check.passed ? (
-                    <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                  ) : (
-                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                  )}
-                  <span>{check.label}</span>
-                </div>
-              ))}
+              <div className="space-y-1">
+                {qualityAssessment.checks.map((check, idx) => (
+                  <div
+                    key={idx}
+                    className="flex items-center gap-1.5 text-[11px] text-slate-600"
+                  >
+                    {check.status === "passed" ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                    ) : check.status === "warning" ? (
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    ) : check.status === "info" ? (
+                      <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    ) : (
+                      <AlertTriangle className="w-3.5 h-3.5 text-rose-500 shrink-0" />
+                    )}
+                    <span>{check.label}</span>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Export Options & Download */}
@@ -913,10 +1313,10 @@ export function BarcodeGenerator({
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
                   <div>
                     <p className="text-xs font-bold text-slate-800">
-                      PDF Page Size
+                      PDF Page Format
                     </p>
                     <p className="text-[10px] text-slate-500">
-                      Printable sheet dimensions
+                      Printable spec sheet or label
                     </p>
                   </div>
                   <select
@@ -927,7 +1327,7 @@ export function BarcodeGenerator({
                     <option value="A4">A4 · 210 × 297 mm</option>
                     <option value="A5">A5 · 148 × 210 mm</option>
                     <option value="Letter">Letter · 216 × 279 mm</option>
-                    <option value="Fit">Fit to Barcode</option>
+                    <option value="Fit">Fit to Label (110 mm)</option>
                   </select>
                 </div>
               ) : exportFormat !== "svg" ? (
@@ -937,7 +1337,7 @@ export function BarcodeGenerator({
                       Export Resolution
                     </p>
                     <p className="text-[10px] text-slate-500">
-                      Rendered raster canvas width
+                      Raster canvas render width
                     </p>
                   </div>
                   <select
@@ -946,7 +1346,7 @@ export function BarcodeGenerator({
                     className="bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 outline-none cursor-pointer"
                   >
                     <option value={1200}>Standard · 1200px</option>
-                    <option value={2400}>High · 2400px</option>
+                    <option value={2400}>High DPI · 2400px</option>
                     <option value={3600}>Maximum · 3600px</option>
                   </select>
                 </div>
@@ -954,8 +1354,7 @@ export function BarcodeGenerator({
                 <div className="p-3 bg-indigo-50/60 border border-indigo-100 rounded-xl flex items-center gap-2 text-xs text-indigo-900">
                   <FileCode className="w-4 h-4 text-indigo-600 shrink-0" />
                   <span className="text-[11px] leading-snug">
-                    Vector SVG exports infinitely scalable crisp lines suitable
-                    for commercial printing.
+                    Vector SVG preserves lossless lines for commercial printing and laser cutters.
                   </span>
                 </div>
               )}
@@ -985,22 +1384,30 @@ export function BarcodeGenerator({
                 </span>
               </button>
 
-              {/* Download Limit & Quota Status */}
+              {/* Print Sheet / Multi-Label Maker Option */}
+              {onOpenPrintSheet && (
+                <button
+                  type="button"
+                  onClick={() => onOpenPrintSheet(barcodeInput, selectedFormatId)}
+                  disabled={Boolean(effectiveError)}
+                  className="w-full py-3.5 px-4 rounded-2xl font-bold border-2 border-dashed border-indigo-200 bg-indigo-50/70 hover:bg-indigo-100 hover:border-indigo-300 text-indigo-700 transition-all flex justify-center items-center gap-2 text-xs sm:text-sm cursor-pointer shadow-2xs hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed group"
+                >
+                  <Printer className="w-4 h-4 text-indigo-600 transition-transform group-hover:scale-110" />
+                  <span>Print Sheet / Label Maker</span>
+                </button>
+              )}
+
+              {/* Format & Ready Status */}
               <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
                 <span>
                   {exportFormat === "pdf"
                     ? `Printable PDF (${pdfPaperSize})`
                     : exportFormat === "svg"
                     ? "Vector SVG (Lossless)"
-                    : `${exportWidth}px Raster`}
+                    : `${exportWidth}px ${exportFormat.toUpperCase()}`}
                 </span>
-                <span className="font-semibold text-slate-600">
-                  Downloads:{" "}
-                  {isSubscribed ? (
-                    <span className="text-emerald-600 font-bold">Unlimited</span>
-                  ) : (
-                    `${downloadCount}/2 free`
-                  )}
+                <span className="font-semibold text-emerald-600 flex items-center gap-1">
+                  <CheckCircle className="w-3.5 h-3.5" /> High-Resolution Ready
                 </span>
               </div>
             </div>

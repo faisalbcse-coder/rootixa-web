@@ -38,3 +38,23 @@ body {
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
+
+/* Custom subtle scrollbar for independent panels */
+.panel-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+.panel-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.panel-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.panel-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+.panel-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
