@@ -11,7 +11,6 @@ import {
   RotateCcw, Palette, Layers, Eye, Compass, SunDim, Barcode, QrCode, Camera
 } from 'lucide-react';
 import { BarcodeGenerator } from '@/components/barcode/barcode-generator';
-import { CodeScanner } from '@/components/scanner/code-scanner';
 import { LabelSheetMaker } from '@/components/print-sheet/label-sheet-maker';
 import {
   buildQRPayload,
@@ -161,7 +160,7 @@ function PresetThumbnail({ preset }) {
 }
 
 export default function QRCodeGenerator() {
-  const [studioAction, setStudioAction] = useState('generate'); // 'generate' | 'scan' | 'print'
+  const [studioAction, setStudioAction] = useState('generate'); // 'generate' | 'print'
   const [studioMode, setStudioMode] = useState('qr'); // 'qr' | 'barcode'
   const [printInitialType, setPrintInitialType] = useState('qr');
   const [lastBarcodeData, setLastBarcodeData] = useState('ROOTIXA-128-PRO');
@@ -966,73 +965,50 @@ export default function QRCodeGenerator() {
           </div>
         </div>
 
-        {/* 2. PROMINENT ACTION (GENERATE vs SCAN) & FORMAT SWITCHER */}
+        {/* 2. PROMINENT FORMAT SWITCHER & DEDICATED SCANNER LINK */}
         <div className="mt-6 flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-3 flex-wrap">
-            {/* Studio Action: Generate Studio vs Real-Time Scanner */}
+            {/* Generator Format Switcher: QR Code vs Barcode */}
             <div className="inline-flex p-1.5 bg-slate-200/70 rounded-2xl border border-slate-300/60 shadow-inner">
               <button
                 type="button"
-                onClick={() => setStudioAction('generate')}
+                onClick={() => setStudioMode('qr')}
                 className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
-                  studioAction === 'generate'
+                  studioMode === 'qr'
                     ? 'bg-white text-indigo-600 shadow-md shadow-slate-300/40'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <Sparkles className="w-4 h-4" />
-                <span>Generate</span>
+                <QrCode className="w-4 h-4" />
+                <span>QR Code</span>
               </button>
               <button
                 type="button"
-                onClick={() => setStudioAction('scan')}
+                onClick={() => setStudioMode('barcode')}
                 className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
-                  studioAction === 'scan'
+                  studioMode === 'barcode'
                     ? 'bg-white text-indigo-600 shadow-md shadow-slate-300/40'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <Camera className="w-4 h-4" />
-                <span>Scan</span>
+                <Barcode className="w-4 h-4" />
+                <span>Barcode</span>
               </button>
             </div>
 
-            {/* Generator Format Switcher: QR Code vs Barcode (visible in Generate mode) */}
-            {studioAction === 'generate' && (
-              <div className="inline-flex p-1.5 bg-slate-200/70 rounded-2xl border border-slate-300/60 shadow-inner">
-                <button
-                  type="button"
-                  onClick={() => setStudioMode('qr')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
-                    studioMode === 'qr'
-                      ? 'bg-white text-indigo-600 shadow-md shadow-slate-300/40'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <QrCode className="w-4 h-4" />
-                  <span>QR Code</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setStudioMode('barcode')}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer ${
-                    studioMode === 'barcode'
-                      ? 'bg-white text-indigo-600 shadow-md shadow-slate-300/40'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <Barcode className="w-4 h-4" />
-                  <span>Barcode</span>
-                </button>
-              </div>
-            )}
+            {/* Quick Link to Dedicated Scanner Tool */}
+            <Link
+              href="/qr-code-scanner"
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:text-indigo-600 text-xs sm:text-sm font-bold transition shadow-2xs cursor-pointer"
+            >
+              <Camera className="w-4 h-4 text-indigo-600" />
+              <span>Scanner Tool &rarr;</span>
+            </Link>
           </div>
 
           <p className="text-xs text-slate-400 font-medium hidden sm:block">
             {studioAction === 'print'
               ? 'Currently active: Multi-label print sheet maker'
-              : studioAction === 'scan'
-              ? 'Currently active: Real-time QR & Barcode scanner'
               : studioMode === 'qr' 
               ? 'Currently editing: Branded QR Code generator' 
               : 'Currently editing: Standards-compliant Barcode generator'}
@@ -1050,8 +1026,6 @@ export default function QRCodeGenerator() {
             initialCodeType={printInitialType}
             onBack={() => setStudioAction('generate')}
           />
-        ) : studioAction === 'scan' ? (
-          <CodeScanner />
         ) : studioMode === 'barcode' ? (
           <BarcodeGenerator
             isSubscribed={isSubscribed}
