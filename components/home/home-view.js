@@ -29,6 +29,7 @@ import {
 import { CANONICAL_TOOLS, CATEGORIES } from "@/lib/tools/data";
 import { searchToolsSemantic } from "@/lib/tools/semantic-search";
 import { useToolTransition, ToolLink } from "@/components/tools/tool-transition-context";
+import { ROOTIXA_VERSION } from "@/lib/version";
 
 // FAQ items
 const FAQ_ITEMS = [
@@ -539,21 +540,24 @@ export function HomeView() {
                           <div className="w-12 h-12 rounded-xl bg-slate-50 dark:bg-slate-700/70 border border-slate-200 dark:border-slate-600 flex items-center justify-center group-hover:scale-105 group-hover:bg-indigo-50 dark:group-hover:bg-indigo-950/40 transition-all">
                             <IconComp className={`w-6 h-6 ${tool.iconColor}`} />
                           </div>
-                          <span
-                            className={`text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-full ${
-                              tool.isLive
-                                ? "bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
-                                : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
-                            }`}
-                          >
-                            {tool.badge}
-                          </span>
+                          {tool.isLive && (
+                            <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                              {tool.badge}
+                            </span>
+                          )}
                         </div>
 
                         <div className="mb-2">
-                          <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
-                            {tool.category}
-                          </span>
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                              {tool.category}
+                            </span>
+                            {tool.version && (
+                              <span className="text-[10px] font-mono font-semibold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-700/60 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-600/60">
+                                v{tool.version}
+                              </span>
+                            )}
+                          </div>
                           <h2 className="text-xl font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors mt-0.5">
                             {tool.name}
                           </h2>
@@ -591,7 +595,8 @@ export function HomeView() {
                             <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                           </ToolLink>
                         ) : (
-                          <span className="text-xs font-semibold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-700/60 px-2.5 py-1 rounded-lg">
+                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/50 border border-sky-200/70 dark:border-sky-800/60 px-3 py-1.5 rounded-xl shadow-2xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 dark:bg-sky-500 animate-pulse" />
                             Coming Soon
                           </span>
                         )}
@@ -882,10 +887,22 @@ export function HomeView() {
                 <li>
                   <ToolLink
                     href="/qr-code"
-                    toolName="QR Code Generator"
+                    toolName="QR & BAR Code Generator"
                     className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center gap-1.5"
                   >
-                    <span>QR Code Generator</span>
+                    <span>QR & Barcode Generator</span>
+                    <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[9px] px-1.5 py-0.5 rounded-full font-bold">
+                      Live
+                    </span>
+                  </ToolLink>
+                </li>
+                <li>
+                  <ToolLink
+                    href="/qr-code-scanner"
+                    toolName="QR & Barcode Scanner"
+                    className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center gap-1.5"
+                  >
+                    <span>QR & Barcode Scanner</span>
                     <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[9px] px-1.5 py-0.5 rounded-full font-bold">
                       Live
                     </span>
@@ -904,28 +921,20 @@ export function HomeView() {
                   </ToolLink>
                 </li>
                 <li>
-                  <ToolLink
-                    href="/image-resizer"
-                    toolName="Image Resizer & Crop"
-                    className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center gap-1.5"
-                  >
+                  <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
                     <span>Image Resizer</span>
-                    <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[9px] px-1.5 py-0.5 rounded-full font-bold">
-                      Live
+                    <span className="bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 border border-sky-200/70 dark:border-sky-800/60 text-[9px] px-1.5 py-0.5 rounded-full font-bold">
+                      Coming Soon
                     </span>
-                  </ToolLink>
+                  </div>
                 </li>
                 <li>
-                  <ToolLink
-                    href="/ai-background-remover"
-                    toolName="AI Background Remover & Enhancer"
-                    className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center gap-1.5"
-                  >
+                  <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
                     <span>AI Background Remover</span>
-                    <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[9px] px-1.5 py-0.5 rounded-full font-bold">
-                      Live
+                    <span className="bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 border border-sky-200/70 dark:border-sky-800/60 text-[9px] px-1.5 py-0.5 rounded-full font-bold">
+                      Coming Soon
                     </span>
-                  </ToolLink>
+                  </div>
                 </li>
                 <li>
                   <a
@@ -1024,9 +1033,13 @@ export function HomeView() {
             </div>
           </div>
 
-          {/* Bottom Bar */}
           <div className="pt-8 border-t border-slate-200 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4 text-xs font-medium text-slate-400 text-center">
-            <p>&copy; {new Date().getFullYear()} Rootixa. All rights reserved.</p>
+            <div className="flex items-center gap-2">
+              <p>&copy; {new Date().getFullYear()} Rootixa. All rights reserved.</p>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                v{ROOTIXA_VERSION}
+              </span>
+            </div>
             <div className="flex items-center gap-3">
               <p>
                 A product Of{" "}

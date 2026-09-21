@@ -18,6 +18,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { CodeScanner } from "@/components/scanner/code-scanner";
+import { TOOL_VERSIONS } from "@/lib/version";
 
 const FAQ_ITEMS = [
   {
@@ -115,6 +116,9 @@ export default function QrCodeScannerPage() {
               </span>
               <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md bg-indigo-50 text-indigo-600 border border-indigo-100">
                 Scanner
+              </span>
+              <span className="text-[10px] font-mono font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                v{TOOL_VERSIONS["qr-code-scanner"]}
               </span>
             </Link>
           </div>

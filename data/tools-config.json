@@ -4,20 +4,28 @@
       "status": "live",
       "maintenanceNotice": ""
     },
+    "qr-code-scanner": {
+      "status": "live",
+      "maintenanceNotice": ""
+    },
     "lorem-ipsum": {
       "status": "live",
       "maintenanceNotice": ""
     },
-    "cv-builder": {
-      "status": "live",
+    "image-resizer": {
+      "status": "development",
       "maintenanceNotice": ""
     },
-    "image-resizer": {
-      "status": "live",
+    "word": {
+      "status": "development",
+      "maintenanceNotice": ""
+    },
+    "cv-builder": {
+      "status": "development",
       "maintenanceNotice": ""
     },
     "bg-remover": {
-      "status": "live",
+      "status": "development",
       "maintenanceNotice": ""
     },
     "pdf-converter": {
@@ -29,5 +37,5 @@
       "maintenanceNotice": ""
     }
   },
-  "updatedAt": "2026-09-04T13:21:25.935Z"
+  "updatedAt": "2026-09-21T12:16:00.000Z"
 }

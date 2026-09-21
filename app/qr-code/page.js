@@ -31,6 +31,7 @@ import {
   detectMatchingPreset
 } from '@/lib/qr/design-safety';
 import { generateQrPdf, compositeQrWithText } from '@/lib/qr/pdf-export';
+import { TOOL_VERSIONS } from '@/lib/version';
 
 const PREVIEW_SIZE = 300;
 const POSTER_PRESETS = {
@@ -936,6 +937,9 @@ export default function QRCodeGenerator() {
             </span>
             <span className="text-[11px] font-bold text-indigo-700 bg-indigo-50 px-2.5 py-0.5 rounded-md border border-indigo-100 hidden sm:inline-block">
               QR & Barcode Studio
+            </span>
+            <span className="text-[10px] font-mono font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+              v{TOOL_VERSIONS["qr-code"]}
             </span>
           </div>
         </div>

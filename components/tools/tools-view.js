@@ -22,6 +22,7 @@ import {
 import { CANONICAL_TOOLS } from "@/lib/tools/data";
 import { searchToolsSemantic } from "@/lib/tools/semantic-search";
 import { useToolTransition, ToolLink } from "@/components/tools/tool-transition-context";
+import { ROOTIXA_VERSION } from "@/lib/version";
 
 export function ToolsView() {
   const { openTool } = useToolTransition();
@@ -444,23 +445,26 @@ export function ToolsView() {
                             <IconComp className="w-6 h-6" />
                           </div>
 
-                          {tool.isLive ? (
+                          {tool.isLive && (
                             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200/70 dark:border-emerald-800/70">
                               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                               Ready to use
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
-                              Coming soon
                             </span>
                           )}
                         </div>
 
                         {/* Card Content */}
                         <div className="mt-5">
-                          <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                            {tool.name}
-                          </h2>
+                          <div className="flex items-center justify-between">
+                            <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                              {tool.name}
+                            </h2>
+                            {tool.version && (
+                              <span className="text-[10px] font-mono font-semibold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700">
+                                v{tool.version}
+                              </span>
+                            )}
+                          </div>
                           <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed mt-2 line-clamp-2">
                             {tool.desc}
                           </p>
@@ -487,8 +491,9 @@ export function ToolsView() {
                             <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                           </ToolLink>
                         ) : (
-                          <div className="w-full py-2.5 px-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800/80 text-slate-400 dark:text-slate-500 text-xs font-medium text-center">
-                            In Development
+                          <div className="w-full py-2.5 px-4 rounded-xl bg-sky-50/80 dark:bg-sky-950/40 border border-sky-200/70 dark:border-sky-900/50 text-sky-600 dark:text-sky-400 text-xs font-semibold text-center flex items-center justify-center gap-1.5 shadow-2xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 dark:bg-sky-500 animate-pulse" />
+                            <span>Coming Soon</span>
                           </div>
                         )}
                       </div>
@@ -601,7 +606,19 @@ export function ToolsView() {
                     toolName="QR & BAR Code Generator"
                     className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center gap-1.5"
                   >
-                    <span>QR Code Generator</span>
+                    <span>QR & Barcode Generator</span>
+                    <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[9px] px-1.5 py-0.5 rounded-full font-bold">
+                      Live
+                    </span>
+                  </ToolLink>
+                </li>
+                <li>
+                  <ToolLink
+                    href="/qr-code-scanner"
+                    toolName="QR & Barcode Scanner"
+                    className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center gap-1.5"
+                  >
+                    <span>QR & Barcode Scanner</span>
                     <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[9px] px-1.5 py-0.5 rounded-full font-bold">
                       Live
                     </span>
@@ -620,28 +637,20 @@ export function ToolsView() {
                   </ToolLink>
                 </li>
                 <li>
-                  <ToolLink
-                    href="/image-resizer"
-                    toolName="Image Resizer & Crop"
-                    className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center gap-1.5"
-                  >
+                  <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
                     <span>Image Resizer</span>
-                    <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[9px] px-1.5 py-0.5 rounded-full font-bold">
-                      Live
+                    <span className="bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 border border-sky-200/70 dark:border-sky-800/60 text-[9px] px-1.5 py-0.5 rounded-full font-bold">
+                      Coming Soon
                     </span>
-                  </ToolLink>
+                  </div>
                 </li>
                 <li>
-                  <ToolLink
-                    href="/ai-background-remover"
-                    toolName="AI Background Remover & Enhancer"
-                    className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors flex items-center gap-1.5"
-                  >
+                  <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
                     <span>AI Background Remover</span>
-                    <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[9px] px-1.5 py-0.5 rounded-full font-bold">
-                      Live
+                    <span className="bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 border border-sky-200/70 dark:border-sky-800/60 text-[9px] px-1.5 py-0.5 rounded-full font-bold">
+                      Coming Soon
                     </span>
-                  </ToolLink>
+                  </div>
                 </li>
                 <li>
                   <Link
@@ -739,7 +748,12 @@ export function ToolsView() {
 
           {/* Bottom Bar */}
           <div className="pt-8 border-t border-slate-200 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4 text-xs font-medium text-slate-400 text-center">
-            <p>&copy; {new Date().getFullYear()} Rootixa. All rights reserved.</p>
+            <div className="flex items-center gap-2">
+              <p>&copy; {new Date().getFullYear()} Rootixa. All rights reserved.</p>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                v{ROOTIXA_VERSION}
+              </span>
+            </div>
             <div className="flex items-center gap-3">
               <p>
                 A product Of{" "}

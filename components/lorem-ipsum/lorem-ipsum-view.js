@@ -30,6 +30,7 @@ import {
   X,
 } from "lucide-react";
 import { generateLoremIpsum, downloadAsTxt } from "@/lib/lorem-ipsum/generator";
+import { ROOTIXA_VERSION, TOOL_VERSIONS } from "@/lib/version";
 
 export function LoremIpsumView() {
   // Theme state
@@ -337,9 +338,14 @@ export function LoremIpsumView() {
 
           {/* Header Banner */}
           <div className="mb-10 text-center sm:text-left">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/70 dark:border-indigo-800/70 mb-3.5">
-              <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-              <span>Independent Rootixa Utility</span>
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-3.5">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/70 dark:border-indigo-800/70">
+                <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
+                <span>Independent Rootixa Utility</span>
+              </div>
+              <span className="text-[10px] font-mono font-semibold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700">
+                v{TOOL_VERSIONS["lorem-ipsum"]}
+              </span>
             </div>
             <h1 className="text-3xl sm:text-4xl md:text-5xl font-black text-slate-900 dark:text-white tracking-tight leading-tight">
               Lorem Ipsum Generator
@@ -870,7 +876,12 @@ export function LoremIpsumView() {
 
           {/* Bottom Bar */}
           <div className="pt-8 border-t border-slate-200 dark:border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4 text-xs font-medium text-slate-400 text-center">
-            <p>&copy; {new Date().getFullYear()} Rootixa. All rights reserved.</p>
+            <div className="flex items-center gap-2">
+              <p>&copy; {new Date().getFullYear()} Rootixa. All rights reserved.</p>
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                v{ROOTIXA_VERSION}
+              </span>
+            </div>
             <div className="flex items-center gap-3">
               <p>
                 A product Of{" "}

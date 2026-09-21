@@ -1,12 +1,17 @@
 {
   "name": "rootixa",
-  "version": "0.1.0",
+  "version": "1.0.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "version:bump": "node scripts/bump-version.js",
+    "version:bump:qr": "node scripts/bump-version.js --tool=qr-code --with-app",
+    "version:bump:scanner": "node scripts/bump-version.js --tool=qr-code-scanner --with-app",
+    "version:bump:lorem": "node scripts/bump-version.js --tool=lorem-ipsum --with-app",
+    "version:bump:all": "node scripts/bump-version.js --all",
     "postinstall": "node scripts/patch-html2canvas.js"
   },
   "dependencies": {
